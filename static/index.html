@@ -3,9 +3,11 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="unsafe-url" />
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Wrapped</title>
     <link rel="stylesheet" href="style.css">
+    <script src="request.js"></script> 
   </head>
   <body>
     <div class="container">
@@ -15,6 +17,17 @@
         <p>
             Create a Wrapped summary from your last.fm data
         </p>
+        <label>last.fm Username:</label>
+        <input type="text" id="username">
+        <button type="button" id="submit">Submit</button>
+    </div>
+    <div class="output">
+      <p>Top Artists</p>
+      <p id="top-artists"></p>
+      <p>Top Tracks</p>
+      <p id="top-tracks"></p>
+      <p>Minutes Listened</p>
+      <p id="listen-time"></p>
     </div>
   </body>
 </html>
