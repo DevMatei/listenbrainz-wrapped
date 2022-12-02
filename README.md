@@ -1,5 +1,5 @@
 # wrapped-fm
-A Spotify Wrapped clone using last.fm APIs
+A Spotify Wrapped clone for last.fm written in Flask
 
 # To-do
 Render an image based on the data  
