@@ -14,6 +14,3 @@ If you want artist images to be scraped, you'll need bs4 as well
 # License
 wrapped-fm is licensed under the AGPL-3.0 license.  
 Share alike please!
-
-# To-do
-Add listening time
