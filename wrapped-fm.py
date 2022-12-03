@@ -7,10 +7,13 @@ from bs4 import BeautifulSoup
 
 api_file = open(os.getcwd() + "/key", "r")
 key = api_file.readline()
-print(key)
 api_file.close()
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='')
 
+# redirect so /index.html instead of /static/index.html :/
+@app.route('/')
+def root():
+    return app.send_static_file('index.html')
 
 # returns the top albums given a username
 @app.route("/top/albums/<name>")
@@ -55,3 +58,6 @@ def get_top_tracks(name):
     for i in r.json()['toptracks']['track']:
        output += f"{i['@attr']['rank']} {i['name']}<br>"
     return output
+
+if __name__ == "__main__":
+    app.run()
