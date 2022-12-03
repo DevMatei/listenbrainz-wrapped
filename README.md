@@ -3,7 +3,8 @@ A Spotify Wrapped clone for last.fm written in Flask
 
 # Setup
 Put your last.fm API key into a file in the root of the directory named `key`  
-Run `wrapped-fm.py` as a Flask app using any WSGI server (i.e `gunicorn -w 4 -b <ip>:<port> wrapped-fm:app`)
+Run `wrapped-fm.py` as a Flask app using any WSGI server (i.e `gunicorn -w 4 -b <ip>:<port> wrapped-fm:app`)  
+
 For testing, run `start.sh <ip> <port>`
 
 # Dependencies

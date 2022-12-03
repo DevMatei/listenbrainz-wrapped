@@ -1,3 +1,20 @@
+@font-face {
+    font-family: 'Nunito-Bold';
+    src: url('font/Nunito-Bold.ttf') format('truetype'); 
+}  
+
+@font-face {
+    font-family: 'Nunito';
+    src: url('font/Nunito-Regular.ttf') format('truetype'); 
+}  
 .container {
     margin: 0 auto;
+}
+body {
+    font-family: 'Nunito-Bold', sans-serif;
+}
+
+canvas {
+    width: 20%;
+    height: auto;
 }

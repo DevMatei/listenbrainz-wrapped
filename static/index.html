@@ -19,7 +19,15 @@
         </p>
         <label>last.fm Username:</label>
         <input type="text" id="username">
-        <button type="button" id="submit">Submit</button>
+        <button type="button" id="submit">Submit</button><br><br>
+        <label>Color</label>
+        <select id="color">
+          <option value="black">Black</option>
+          <option value="purple">Purple</option>
+          <option value="yellow">Yellow</option>
+          <option value="pink">Pink</option>
+        </select> <br>
+        <canvas id ="canvas" clsas="canv" width="1080" height="1920"></canvas>
     </div>
     <div class="output">
       <p>Top Artists</p>
@@ -28,7 +36,6 @@
       <p id="top-tracks"></p>
       <p>Minutes Listened</p>
       <p id="listen-time"></p>
-
       <img id="artist-img" src="https://lastfm.freetls.fastly.net/i/u/avatar170s/5f9fa0451e5932fccd04dd8136c1cadd">
     </div>
   </body>
