@@ -2,31 +2,46 @@ var btn = null;
 var username_field = null;
 var top_artists = null;
 var top_songs = null;
+var listen_time = null;
 var artist_img = null;
 var color_dropdown = null;
 var canvas = null;
 var ctx = null;
+var generated = false;
+
 var img = [
     new Image(),
     new Image(),
     new Image(),
     new Image()
 ]
-async function get_info() {
-    var username = username_field.value;
-
-    let artists = await fetch("/top/artists/" + username);
-    top_artists.innerHTML = await artists.text();
-
-    let tracks = await fetch("/top/tracks/" + username);
-    top_tracks.innerHTML = await tracks.text();
-
-    let img = await fetch("/top/img/" + username);
-    artist_img.src = await img.text();
-    draw(0);
+async function generate_wrapped() {
+    draw_bg();
+    username = username_field.value;
+    get_listen_time();
+    get_artist_img();
+    get_top_artists();
+    get_top_songs();
+    generated = true;
+}
+async function get_artist_img() {
+    artist_img.src = await (await fetch("/top/img/" + username)).text();
+    draw_artist_img();
+}
+async function get_top_artists() {
+    top_artists.innerHTML = await (await fetch("/top/artists/" + username)).text();
+    draw_top_artists();
+}
+async function get_top_songs() {
+    top_songs.innerHTML = await (await fetch("/top/tracks/" + username)).text();
+    draw_top_songs();
+}
+async function get_listen_time() {
+    listen_time.innerHTML = await (await fetch("/time/total/" + username)).text();
+    draw_listen_time();
 }
 
-function draw() {
+function draw_bg() {
     var img_index = 0;
     switch (color_dropdown.value) {
         case "black":
@@ -46,19 +61,22 @@ function draw() {
             ctx.fillStyle = "#151016";
             break;   
     }
-    // bg image
     ctx.drawImage(img[img_index], 0, 0);
-    // artist image
+    if (top_artists.innerHTML != null && listen_time.innerHTML != null && top_songs.innerHTML != null) {
+       draw_artist_img();
+       draw_listen_time();
+       draw_top_artists();
+       draw_top_songs();
+       //draw_top_genres();
+    }
+}
+function draw_artist_img() {
     ctx.drawImage(artist_img, 268, 244, 544, 544);
+}
     
-    // light text
+function draw_top_artists() {
     ctx.font = "48px Nunito";
     ctx.fillText("Top Artists", 106, 1031);
-    ctx.fillText("Top Songs", 559, 1031);
-    ctx.fillText("Minutes Listened", 112, 1475);
-    //ctx.fillText("Top Genre", 565, 1475);
-
-    // small info bold text
     ctx.font = "48px Nunito-Bold";
     artists = top_artists.innerHTML.split("<br>");
     for (var i = 0; i < artists.length; i++) {
@@ -67,7 +85,13 @@ function draw() {
         }
         ctx.fillText(artists[i], 111, 1113+i*64);
     }
-    tracks = top_tracks.innerHTML.split("<br>");
+}
+
+function draw_top_songs() {
+    ctx.font = "48px Nunito";
+    ctx.fillText("Top Songs", 559, 1031);
+    ctx.font = "48px Nunito-Bold";
+    tracks = top_songs.innerHTML.split("<br>");
     for (var i = 0; i < tracks.length; i++) {
         if (tracks[i].length > 17) {
             tracks[i] = tracks[i].substring(0,13) + "...";
@@ -76,16 +100,30 @@ function draw() {
     }
 }
 
+function draw_listen_time() {
+    ctx.font = "48px Nunito-Bold";
+    ctx.fillText("Minutes Listened", 112, 1475);
+    ctx.font = "77px Nunito-Bold";
+    ctx.fillText(listen_time.innerHTML.toLocaleString('en-US'), 112, 1575);
+}
+
+// does nothing
+function draw_top_genre() {
+    ctx.fillText("Top Genre", 565, 1475);
+}
+
 window.onload = function() {
     btn = document.getElementById("submit");
-    btn.onclick = get_info;
+    btn.onclick = generate_wrapped;
     username_field = document.getElementById('username');
     top_artists = document.getElementById('top-artists');
-    top_tracks = document.getElementById('top-tracks');
+    top_songs = document.getElementById('top-tracks');
+    listen_time = document.getElementsByTagName('listen-time');
     artist_img = document.getElementById('artist-img');
     color_dropdown = document.getElementById('color');
     canvas = document.getElementById("canvas");
     ctx = canvas.getContext("2d");
+    draw_bg();
     img[0].src = "img/black.png";
     img[1].src = "img/purple.png";
     img[2].src = "img/yellow.png";

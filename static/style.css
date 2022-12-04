@@ -17,4 +17,5 @@ body {
 canvas {
     width: 20%;
     height: auto;
+    position: absolute;
 }

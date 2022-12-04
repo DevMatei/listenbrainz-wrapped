@@ -21,21 +21,23 @@
         <input type="text" id="username">
         <button type="button" id="submit">Submit</button><br><br>
         <label>Color</label>
-        <select id="color">
+        <select id="color" onchange="draw_bg()">
           <option value="black">Black</option>
           <option value="purple">Purple</option>
           <option value="yellow">Yellow</option>
           <option value="pink">Pink</option>
-        </select> <br>
-        <canvas id ="canvas" clsas="canv" width="1080" height="1920"></canvas>
+        </select>
+        <div>
+          <canvas id="canvas" width="1080" height="1920"></canvas>
+        </div>
     </div>
-    <div class="output">
+    <div class="output" hidden>
       <p>Top Artists</p>
       <p id="top-artists"></p>
       <p>Top Tracks</p>
       <p id="top-tracks"></p>
       <p>Minutes Listened</p>
-      <p id="listen-time"></p>
+      <p id="listen-time">.</p>
       <img id="artist-img" src="https://lastfm.freetls.fastly.net/i/u/avatar170s/5f9fa0451e5932fccd04dd8136c1cadd">
     </div>
   </body>

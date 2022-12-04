@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import subprocess
+import time
 from flask import Flask
 from bs4 import BeautifulSoup
 
@@ -58,6 +59,32 @@ def get_top_tracks(name):
     for i in r.json()['toptracks']['track']:
        output += f"{i['@attr']['rank']} {i['name']}<br>"
     return output
+
+# returns the total listening time given a username
+@app.route("/time/total/<name>")
+def get_listen_time(name):
+    rightnow = int(time.time())
+    yearago = rightnow - 31557600 # year in seconds
+    payload = {'user': name, 'api_key': key, 'from': yearago, 'to': rightnow, 'format':'json'}
+    r = requests.get('http://ws.audioscrobbler.com/2.0/?method=user.getweeklytrackchart', params=payload)
+    total = 0
+    for i in r.json()['weeklytrackchart']['track']:
+        playcount = int(i['playcount'])
+        tracktime = get_track_time(i['artist']['#text'], i['name']) 
+        total += playcount * int(get_track_time(i['artist']['#text'], i['name']))
+    return ("{:,}".format(int(total/60000)))
+
+# returns the length for a track given an mbid
+@app.route("/time/total_ta/<artist>/<track>")
+def get_track_time(artist, track):
+    payload = {'artist': artist, 'track': track, 'api_key': key, 'format': 'json'}
+    r = requests.get('http://ws.audioscrobbler.com/2.0/?method=track.getInfo', params=payload)
+    try:
+        output = r.json()['track']['duration']
+    except:
+        output = "180000" # 3 minutes is roughly the average song length, good enough if it doesn't find a track duration
+    return output
+
 
 if __name__ == "__main__":
     app.run()
