@@ -70,7 +70,7 @@ function draw_bg() {
             break;   
     }
     ctx.drawImage(img[img_index], 0, 0);
-    if (top_artists.innerHTML != null && listen_time.innerHTML != null && top_songs.innerHTML != null) {
+    if (top_artists.innerHTML != null && listen_time.innerHTML != null && top_songs.innerHTML != null && username == username_field.value) {
        draw_artist_img();
        draw_listen_time();
        draw_top_artists();

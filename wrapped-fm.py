@@ -6,6 +6,7 @@ import time
 from flask import Flask
 from bs4 import BeautifulSoup
 from statistics import mode
+from multiprocessing import Pool
 
 api_file = open(os.getcwd() + "/key", "r")
 key = api_file.readline()
@@ -88,13 +89,20 @@ def get_listen_time(name):
     yearago = rightnow - 31557600 # year in seconds
     payload = {'user': name, 'api_key': key, 'from': yearago, 'to': rightnow, 'format':'json'}
     r = requests.get('http://ws.audioscrobbler.com/2.0/?method=user.getweeklytrackchart', params=payload)
+    tracks = r.json()['weeklytrackchart']['track']
+    tracktimes = []
     total = 0
-    for i in r.json()['weeklytrackchart']['track']:
-        print("fuck")
-        playcount = int(i['playcount'])
-        tracktime = get_track_time(i['artist']['#text'], i['name']) 
-        total += playcount * int(get_track_time(i['artist']['#text'], i['name']))
+    with Pool(6) as pool:
+        tracktimes = pool.map(get_total_track_time, tracks)
+    for i in tracktimes:
+        total += int(i)
     return ("{:,}".format(int(total/60000)))
+
+# returns the total track time (playcount * runtime) for a track
+def get_total_track_time(track):
+    playcount = int(track['playcount'])
+    tracktime = get_track_time(track['artist']['#text'], track['name']) 
+    return playcount * int(tracktime)
 
 # returns the length for a track given an artist and track name
 @app.route("/time/total_ta/<artist>/<track>")
