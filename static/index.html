@@ -5,21 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="unsafe-url" />
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Wrapped</title>
+    <title>YASCBSH Wrapped</title>
     <link rel="stylesheet" href="style.css">
     <script src="request.js"></script> 
   </head>
   <body>
     <div class="container">
         <h1>
-            Wrapped Clone
+            YASCBSH Wrapped
         </h1>
         <p>
-            Create a Wrapped summary from your last.fm data
+            Create a Wrapped summary from your last.fm/navidrome listening history.
         </p>
         <label>last.fm Username:</label>
         <input type="text" id="username">
-        <button type="button" id="submit">Submit</button><br><br>
+        <button type="button" id="submit">Submit</button>
+        <span id="loading" style="display:none;margin-left:16px;vertical-align:middle;">Loading...</span>
+        <br><br>
         <label>Color</label>
         <select id="color" onchange="draw_bg()">
           <option value="black">Black</option>
@@ -27,9 +29,11 @@
           <option value="yellow">Yellow</option>
           <option value="pink">Pink</option>
         </select>
-        <div>
+        <div style="margin-top: 1em;">
           <canvas id="canvas" width="1080" height="1920"></canvas>
         </div>
+  <button id="download" type="button" style="margin-top: 1em;" aria-disabled="true" aria-busy="false" title="Download your wrapped image">Download Image</button>
+  <span id="download-error" style="display:none;color:#ff6f6f;margin-left:10px;">Download unavailable: artist image failed to load.</span>
     </div>
     <div class="output" hidden>
       <p>Top Artists</p>
@@ -40,7 +44,7 @@
       <p id="listen-time">.</p>
       <p>Top Genre</p>
       <p id="top-genre">no genre</p>
-      <img id="artist-img" src="https://lastfm.freetls.fastly.net/i/u/avatar170s/5f9fa0451e5932fccd04dd8136c1cadd">
+  <img id="artist-img" src="img/black.png">
     </div>
   </body>
 </html>

@@ -1,3 +1,4 @@
 # ignore api keys
 key
 __pycache__
+.venv

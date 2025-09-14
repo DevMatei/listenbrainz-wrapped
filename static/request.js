@@ -1,3 +1,4 @@
+
 var btn = null;
 var username_field = null;
 var top_artists = null;
@@ -9,6 +10,8 @@ var color_dropdown = null;
 var canvas = null;
 var ctx = null;
 var generated = false;
+var loading = null;
+var download_btn = null;
 
 var img = [
     new Image(),
@@ -17,18 +20,57 @@ var img = [
     new Image()
 ]
 async function generate_wrapped() {
+    loading.style.display = "inline-block";
+    btn.disabled = true;
+    download_btn.disabled = true;
+    const downloadError = document.getElementById('download-error');
+    downloadError.style.display = 'none';
     draw_bg();
     username = username_field.value;
-    get_listen_time();
-    get_artist_img();
-    get_top_artists(5);
-    get_top_songs(5);
-    get_top_genre();
-    generated = true;
-}
+    let artistImgLoaded = false;
+    
+    try {
+        await Promise.all([
+            get_listen_time(),
+            (async () => {
+                artistImgLoaded = await get_artist_img();
+                if (artistImgLoaded) {
+                    draw_bg(); // Redraw everything with the artist image
+                }
+            })(),
+            get_top_artists(5),
+            get_top_songs(5),
+            get_top_genre()
+        ]);
+    } finally {
+        generated = true;
+        loading.style.display = "none";
+        btn.disabled = false;
+        download_btn.disabled = !artistImgLoaded;
+        downloadError.style.display = artistImgLoaded ? 'none' : 'inline';
+    }
 async function get_artist_img() {
-    artist_img.src = await (await fetch("/top/img/" + username)).text();
-    draw_artist_img();
+    artist_img.crossOrigin = "anonymous";
+    try {
+        let imgUrl = await (await fetch("/top/img/" + username)).text();
+        return new Promise((resolve) => {
+            artist_img.onload = () => {
+                console.log("Artist image loaded successfully");
+                resolve(true);
+            };
+            artist_img.onerror = (error) => {
+                console.error("Failed to load artist image:", error);
+                artist_img.src = "img/black.png"; // Fallback to local image
+                resolve(false);
+            };
+            artist_img.src = imgUrl;
+        });
+    } catch (error) {
+        console.error("Failed to fetch artist image:", error);
+        artist_img.src = "img/black.png";
+        return false;
+    }
+}
 }
 async function get_top_artists(number) {
     top_artists.innerHTML = await (await fetch("/top/artists/" + username + "/" + number + "/formatted")).text();
@@ -70,10 +112,12 @@ function draw_bg() {
             break;   
     }
     ctx.drawImage(img[img_index], 0, 0);
+    if (artist_img.complete && artist_img.naturalWidth > 0) {
+        ctx.drawImage(artist_img, 268, 244, 544, 544);
+    }
     if (top_artists.innerHTML != null && listen_time.innerHTML != null && top_songs.innerHTML != null && username == username_field.value) {
-       draw_artist_img();
-       draw_listen_time();
-       draw_top_artists();
+        draw_listen_time();
+        draw_top_artists();
        draw_top_songs();
        if (top_genre.innerHTML != "no genre") {
         draw_top_genre();
@@ -81,7 +125,10 @@ function draw_bg() {
     }
 }
 function draw_artist_img() {
-    ctx.drawImage(artist_img, 268, 244, 544, 544);
+    // Only draw if image is loaded and not broken
+    if (artist_img.complete && artist_img.naturalWidth > 0) {
+        ctx.drawImage(artist_img, 268, 244, 544, 544);
+    }
 }
     
 function draw_top_artists() {
@@ -132,14 +179,23 @@ window.onload = function() {
     top_artists = document.getElementById('top-artists');
     top_songs = document.getElementById('top-tracks');
     top_genre = document.getElementById('top-genre');
-    listen_time = document.getElementsByTagName('listen-time');
+    listen_time = document.getElementById('listen-time');
     artist_img = document.getElementById('artist-img');
     color_dropdown = document.getElementById('color');
     canvas = document.getElementById("canvas");
     ctx = canvas.getContext("2d");
+    loading = document.getElementById("loading");
+    download_btn = document.getElementById("download");
     draw_bg();
     img[0].src = "img/black.png";
     img[1].src = "img/purple.png";
     img[2].src = "img/yellow.png";
     img[3].src = "img/pink.png";
+    download_btn.onclick = function() {
+        var link = document.createElement('a');
+        link.download = 'wrapped.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    };
+    download_btn.disabled = true;
 }
