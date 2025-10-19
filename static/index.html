@@ -2,49 +2,90 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="referrer" content="unsafe-url" />
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>YASCBSH Wrapped</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>ListenBrainz Wrapped</title>
     <link rel="stylesheet" href="style.css">
-    <script src="request.js"></script> 
+    <script defer src="request.js"></script>
   </head>
   <body>
-    <div class="container">
-        <h1>
-            YASCBSH Wrapped
-        </h1>
-        <p>
-            Create a Wrapped summary from your last.fm/navidrome listening history.
-        </p>
-        <label>last.fm Username:</label>
-        <input type="text" id="username">
-        <button type="button" id="submit">Submit</button>
-        <span id="loading" style="display:none;margin-left:16px;vertical-align:middle;">Loading...</span>
-        <br><br>
-        <label>Color</label>
-        <select id="color" onchange="draw_bg()">
-          <option value="black">Black</option>
-          <option value="purple">Purple</option>
-          <option value="yellow">Yellow</option>
-          <option value="pink">Pink</option>
-        </select>
-        <div style="margin-top: 1em;">
-          <canvas id="canvas" width="1080" height="1920"></canvas>
+    <main class="page">
+      <section class="card card--intro">
+        <div class="card__body">
+          <h1>ListenBrainz Wrapped</h1>
+          <p class="intro-copy">
+            Turn your ListenBrainz scrobbles into a shareable poster with your top artists,
+            tracks, listening time, and favourite genre from the last 12 months.
+          </p>
+          <form id="wrapped-form" class="form" autocomplete="off" novalidate>
+            <label class="form__label" for="username">ListenBrainz username</label>
+            <div class="form__field-group">
+              <input
+                id="username"
+                name="username"
+                type="text"
+                placeholder="e.g. rob"
+                required
+                minlength="2"
+                autocomplete="off"
+              >
+              <button id="submit" type="submit" class="btn">Generate</button>
+            </div>
+            <p id="status-message" class="status-message" role="status" aria-live="polite" hidden></p>
+          </form>
+          <div class="form__secondary">
+            <label class="form__label" for="color">Card theme</label>
+            <select id="color" name="color">
+              <option value="black">Midnight</option>
+              <option value="purple">Twilight</option>
+              <option value="yellow">Sunrise</option>
+              <option value="pink">Bloom</option>
+            </select>
+          </div>
+          <div class="actions">
+            <button id="download" type="button" class="btn btn--secondary" aria-disabled="true">
+              Download image
+            </button>
+            <span id="loading" class="loading" hidden>Preparing your wrapped...</span>
+            <span id="download-error" class="error" hidden>
+              Download unavailable: artist image could not be loaded.
+            </span>
+          </div>
         </div>
-  <button id="download" type="button" style="margin-top: 1em;" aria-disabled="true" aria-busy="false" title="Download your wrapped image">Download Image</button>
-  <span id="download-error" style="display:none;color:#ff6f6f;margin-left:10px;">Download unavailable: artist image failed to load.</span>
-    </div>
-    <div class="output" hidden>
-      <p>Top Artists</p>
-      <p id="top-artists"></p>
-      <p>Top Tracks</p>
-      <p id="top-tracks"></p>
-      <p>Minutes Listened</p>
-      <p id="listen-time">.</p>
-      <p>Top Genre</p>
-      <p id="top-genre">no genre</p>
-  <img id="artist-img" src="img/black.png">
-    </div>
+      </section>
+
+      <section class="card card--preview">
+        <div class="card__body">
+          <canvas id="canvas" width="1080" height="1920" aria-label="Wrapped preview"></canvas>
+        </div>
+      </section>
+
+      <section class="card card--details" aria-live="polite">
+        <div class="card__body results" hidden>
+          <h2>Your highlights</h2>
+          <div class="results__grid">
+            <div>
+              <h3>Top artists</h3>
+              <p id="top-artists"></p>
+            </div>
+            <div>
+              <h3>Top tracks</h3>
+              <p id="top-tracks"></p>
+            </div>
+            <div>
+              <h3>Minutes listened</h3>
+              <p id="listen-time"></p>
+            </div>
+            <div>
+              <h3>Top genre</h3>
+              <p id="top-genre"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <img id="artist-img" src="img/black.png" alt="" hidden>
   </body>
 </html>
