@@ -1,5 +1,5 @@
 # ListenBrainz Wrapped
-A Spotify Wrapped style summary for your ListenBrainz scrobbles, built with Flask.
+A Spotify Wrapped style (totally not 1:1 copy of wrapped image) summary for your ListenBrainz scrobbles, built with Flask.
 
 **Status:** Work in progress, but fully functional.
 
@@ -20,6 +20,9 @@ The app talks directly to the public ListenBrainz, MusicBrainz, Cover Art Archiv
 - `LASTFM_API_KEY` - optional, enables higher quality artist images via Last.fm (recommended).
 - `LASTFM_API` - override the Last.fm API base URL.
 - `LASTFM_USER_AGENT` - provide a custom User-Agent when calling Last.fm.
+
+
+good luck reading the code LMFAO
 
 ## License
 wrapped-fm is licensed under the AGPL-3.0 license. Share alike, please!

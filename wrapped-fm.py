@@ -1,6 +1,7 @@
 import os
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote
@@ -8,7 +9,9 @@ from urllib.parse import quote
 import requests
 from flask import Flask, Response, abort, jsonify
 from requests import Response as RequestsResponse
+from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
+from urllib3.util.retry import Retry
 
 LISTENBRAINZ_API = os.getenv("LISTENBRAINZ_API", "https://api.listenbrainz.org/1")
 MUSICBRAINZ_API = os.getenv("MUSICBRAINZ_API", "https://musicbrainz.org/ws/2")
@@ -39,34 +42,81 @@ MUSICBRAINZ_USER_AGENT = os.getenv(
 )
 
 IGNORED_TAGS = {"seen live", "favorites", "favourites", "favorite", "ireland"}
+POPULAR_GENRES = {
+    "pop",
+    "rock",
+    "hip hop",
+    "rap",
+    "electronic",
+    "edm",
+    "indie",
+    "metal",
+    "jazz",
+    "folk",
+    "country",
+    "r&b",
+    "soul",
+    "classical",
+    "blues",
+    "house",
+    "techno",
+    "ambient",
+    "punk",
+    "k-pop",
+    "latin",
+    "dance",
+    "lo-fi",
+}
+
+
+def _configure_session(session: requests.Session, retries: int = 3) -> None:
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        status=retries,
+        backoff_factor=0.5,
+        status_forcelist=(500, 502, 503, 504),
+        allowed_methods=("GET", "HEAD"),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
 
 listenbrainz_session = requests.Session()
 listenbrainz_session.headers.update(
     {"User-Agent": LISTENBRAINZ_USER_AGENT, "Accept": "application/json"}
 )
+_configure_session(listenbrainz_session)
 
 musicbrainz_session = requests.Session()
 musicbrainz_session.headers.update(
     {"User-Agent": MUSICBRAINZ_USER_AGENT, "Accept": "application/json"}
 )
+_configure_session(musicbrainz_session)
 
 cover_art_session = requests.Session()
 cover_art_session.headers.update({"User-Agent": LISTENBRAINZ_USER_AGENT})
+_configure_session(cover_art_session)
 
 wikidata_session = requests.Session()
 wikidata_session.headers.update(
     {"User-Agent": LISTENBRAINZ_USER_AGENT, "Accept": "application/json"}
 )
+_configure_session(wikidata_session)
 
 image_session = requests.Session()
 image_session.headers.update(
     {"User-Agent": LISTENBRAINZ_USER_AGENT, "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}
 )
+_configure_session(image_session)
 
 lastfm_session = requests.Session()
 lastfm_session.headers.update(
     {"User-Agent": LASTFM_USER_AGENT, "Accept": "application/json"}
 )
+_configure_session(lastfm_session)
 
 app = Flask(__name__, static_url_path="")
 
@@ -79,11 +129,15 @@ def root() -> Response:
 def _request_with_handling(
     session: requests.Session, url: str, *, params: Optional[Dict[str, str]] = None
 ) -> RequestsResponse:
-    try:
-        response = session.get(url, params=params, timeout=HTTP_TIMEOUT)
-    except RequestException as exc:  # pragma: no cover - network failure
-        abort(502, description=f"Upstream request failed: {exc}")
-    return response
+    last_exc: Optional[Exception] = None
+    for attempt in range(3):
+        try:
+            response = session.get(url, params=params, timeout=HTTP_TIMEOUT)
+            return response
+        except RequestException as exc:  # pragma: no cover - network failure
+            last_exc = exc
+            time.sleep(0.3 * (attempt + 1))
+    abort(502, description=f"Upstream request failed: {last_exc}")
 
 
 def _fetch_listenbrainz(path: str, params: Optional[Dict[str, str]] = None) -> Dict:
@@ -283,7 +337,7 @@ def _fetch_artist_details(artist_mbid: str) -> Dict:
         return {}
     return _fetch_musicbrainz(
         f"/artist/{artist_mbid}",
-        {"fmt": "json", "inc": "tags+url-rels"},
+        {"fmt": "json", "inc": "tags+genres+url-rels"},
     )
 
 
@@ -293,6 +347,23 @@ def _lookup_artist_tag(artist_mbid: str) -> Optional[str]:
         return None
 
     data = _fetch_artist_details(artist_mbid)
+    genres = data.get("genres") or []
+    if genres:
+        sorted_genres = sorted(
+            genres,
+            key=lambda value: value.get("count", 0),
+            reverse=True,
+        )
+        for genre in sorted_genres:
+            name = (genre.get("name") or "").strip()
+            if not name:
+                continue
+            lower_name = name.lower()
+            if lower_name in POPULAR_GENRES:
+                return name.title()
+            if any(lower_name.endswith(f" {suffix}") for suffix in ("pop", "rock", "metal", "jazz")):
+                return name.title()
+
     tags = data.get("tags") or []
     if not tags:
         return None
@@ -300,7 +371,10 @@ def _lookup_artist_tag(artist_mbid: str) -> Optional[str]:
     for tag in sorted(tags, key=lambda value: value.get("count", 0), reverse=True):
         tag_name = (tag.get("name") or "").strip().lower()
         if tag_name and tag_name not in IGNORED_TAGS:
-            return tag_name
+            if tag_name in POPULAR_GENRES:
+                return tag_name.title()
+            if any(tag_name.endswith(suffix) for suffix in ("pop", "rock", "metal", "jazz", "folk", "house", "core")):
+                return tag_name.title()
     return None
 
 
@@ -319,10 +393,10 @@ def _get_top_genre(username: str) -> str:
     if not tag_counter:
         return "no genre"
     top_tag, _ = tag_counter.most_common(1)[0]
-    return top_tag.title()
+    return top_tag
 
 
-def _commons_file_url(filename: str, width: int = 1200) -> Optional[str]:
+def _commons_file_url(filename: str, width: int = 2048) -> Optional[str]:
     if not filename:
         return None
     safe_name = quote(filename.replace(" ", "_"))
@@ -452,7 +526,7 @@ def _select_lastfm_image(images: List[Dict]) -> Optional[str]:
 
 
 @lru_cache(maxsize=256)
-def _download_lastfm_artist_image(artist_name: str) -> Optional[Tuple[str, bytes]]:
+def _download_lastfm_artist_image(artist_name: str, artist_mbid: Optional[str]) -> Optional[Tuple[str, bytes]]:
     if not LASTFM_API_KEY or not artist_name:
         return None
 
@@ -461,7 +535,10 @@ def _download_lastfm_artist_image(artist_name: str) -> Optional[Tuple[str, bytes
         "artist": artist_name,
         "api_key": LASTFM_API_KEY,
         "format": "json",
+        "autocorrect": "1",
     }
+    if artist_mbid:
+        params["mbid"] = artist_mbid
     response = _request_with_handling(lastfm_session, LASTFM_API, params=params)
     if response.status_code == 404 or not response.ok:
         return None
@@ -510,6 +587,19 @@ def _calculate_average_track_minutes(username: str) -> Optional[float]:
     sample_limit = max(1, min(AVERAGE_TRACK_SAMPLE_LIMIT, 200))
     recordings = _get_top_tracks_payload(username, sample_limit)
 
+    unique_mbids: List[str] = []
+    for recording in recordings:
+        recording_mbid = recording.get("recording_mbid")
+        if recording_mbid and recording_mbid not in unique_mbids:
+            unique_mbids.append(recording_mbid)
+
+    length_map: Dict[str, Optional[int]] = {}
+    if unique_mbids:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            for mbid, length in zip(unique_mbids, pool.map(_lookup_recording_length, unique_mbids)):
+                if length:
+                    length_map[mbid] = length
+
     total_length_ms = 0
     total_listens = 0
     for recording in recordings:
@@ -517,7 +607,13 @@ def _calculate_average_track_minutes(username: str) -> Optional[float]:
         listen_count = _normalise_count(recording.get("listen_count", 0))
         if listen_count <= 0:
             continue
-        length_ms = _lookup_recording_length(recording_mbid or "")
+        length_ms = None
+        if recording_mbid:
+            length_ms = length_map.get(recording_mbid)
+            if length_ms is None:
+                length_ms = _lookup_recording_length(recording_mbid or "")
+                if length_ms:
+                    length_map[recording_mbid] = length_ms
         if not length_ms:
             continue
         total_length_ms += length_ms * listen_count
@@ -619,8 +715,8 @@ def _download_cover_art(release_mbid: str, caa_release_mbid: Optional[str]) -> O
 def get_top_artist_img(username: str) -> Response:
     artist_candidates = _collect_artist_candidates(username)
 
-    for artist_name, _ in artist_candidates:
-        art = _download_lastfm_artist_image(artist_name)
+    for artist_name, artist_mbid in artist_candidates:
+        art = _download_lastfm_artist_image(artist_name, artist_mbid)
         if art:
             content_type, content = art
             proxied = Response(content, content_type=content_type or "image/jpeg")

@@ -8,9 +8,63 @@ const BACKGROUND_SOURCES = {
 const THEME_COLORS = {
   black: { label: '#f3f6ff', value: '#ffffff' },
   purple: { label: '#efe7ff', value: '#ffffff' },
-  yellow: { label: '#2b2118', value: '#1e150f' },
+  yellow: { label: '#2b2118', value: '#3b2815' },
   pink: { label: '#ffe7f5', value: '#ffffff' },
 };
+
+const ALL_SECTIONS = ['artists', 'tracks', 'time', 'genre', 'image'];
+const SECTION_LABELS = {
+  artists: 'Top artists',
+  tracks: 'Top tracks',
+  time: 'Minutes listened',
+  genre: 'Top genre',
+  image: 'Artist image',
+};
+
+function formatSectionListForStatus(sections) {
+  if (!sections.length) {
+    return '';
+  }
+  const labels = sections.map((section) => SECTION_LABELS[section] || section);
+  if (labels.length === 1) {
+    return labels[0];
+  }
+  const head = labels.slice(0, -1).join(', ');
+  const tail = labels[labels.length - 1];
+  return `${head} and ${tail}`;
+}
+
+function parseSectionSelection(raw) {
+  if (!raw) {
+    return [];
+  }
+  const input = raw.toLowerCase();
+  if (input === 'all' || input === 'everything') {
+    return [...ALL_SECTIONS];
+  }
+  const selections = new Set();
+  if (input.includes('artist')) {
+    selections.add('artists');
+  }
+  if (input.includes('track') || input.includes('song')) {
+    selections.add('tracks');
+  }
+  if (input.includes('time') || input.includes('minute') || input.includes('listen')) {
+    selections.add('time');
+  }
+  if (input.includes('genre')) {
+    selections.add('genre');
+  }
+  if (
+    input.includes('image')
+    || input.includes('photo')
+    || input.includes('cover')
+    || input.includes('art')
+  ) {
+    selections.add('image');
+  }
+  return Array.from(selections);
+}
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -106,43 +160,82 @@ async function generateWrapped(event) {
     return;
   }
 
+  const hasExisting = Boolean(generatedData);
+  const sameUsername = hasExisting && generatedData.username === username;
+  let sectionsToRefresh = [...ALL_SECTIONS];
+
+  if (hasExisting) {
+    const promptMessage = [
+      sameUsername
+        ? 'You already generated a wrapped for this username.'
+        : `Current wrapped belongs to "${generatedData.username}".`,
+      'Type:',
+      '- keep — keep the existing poster',
+      '- new — refresh everything',
+      '- or list sections to refresh (artists, tracks, time, genre, image)',
+    ].join('\n');
+    const choiceRaw = window.prompt(promptMessage, 'new');
+    if (choiceRaw === null) {
+      setStatus('Generation cancelled.');
+      return;
+    }
+    const choice = choiceRaw.trim().toLowerCase();
+    if (choice === 'keep' || choice === 'old' || choice === 'current') {
+      resultsCard.hidden = false;
+      drawCanvas();
+      downloadError.hidden = isCoverReady;
+      toggleDownload(isCoverReady);
+      setStatus('Keeping your current wrapped.');
+      return;
+    }
+    if (choice && choice !== 'new') {
+      const parsed = parseSectionSelection(choice);
+      if (!parsed.length) {
+        setStatus('No valid sections selected; keeping current wrapped.');
+        toggleDownload(isCoverReady);
+        return;
+      }
+      sectionsToRefresh = parsed;
+    }
+  }
+
+  if (!hasExisting || !sameUsername) {
+    sectionsToRefresh = [...ALL_SECTIONS];
+  }
+
+  const refreshImage = sectionsToRefresh.includes('image');
+
   setStatus('');
   setLoading(true);
-  resultsCard.hidden = true;
-  downloadError.hidden = true;
-  toggleDownload(false);
-  isCoverReady = false;
+  if (!hasExisting || sectionsToRefresh.length === ALL_SECTIONS.length) {
+    resultsCard.hidden = true;
+  }
+  if (refreshImage) {
+    downloadError.hidden = true;
+    toggleDownload(false);
+    isCoverReady = false;
+  }
 
   try {
-    const [artists, tracks, minutes, genre] = await Promise.all([
-      fetchJson(`/top/artists/${encodeURIComponent(username)}/5`),
-      fetchJson(`/top/tracks/${encodeURIComponent(username)}/5`),
-      fetchText(`/time/total/${encodeURIComponent(username)}`),
-      fetchText(`/top/genre/user/${encodeURIComponent(username)}`),
-    ]);
+    if (!generatedData) {
+      generatedData = {};
+    }
+    generatedData.username = username;
 
-    isCoverReady = await loadCoverArt(username);
+    await updateSections(username, sectionsToRefresh);
 
-    generatedData = {
-      username,
-      artists,
-      tracks,
-      minutes,
-      genre: normaliseGenreLabel(genre),
-    };
-
-    populateResults(generatedData);
     drawCanvas();
-
     resultsCard.hidden = false;
-    toggleDownload(isCoverReady);
-    downloadError.hidden = isCoverReady;
-    setStatus(`Wrapped ready for ${username}.`);
+    const statusMessage = sectionsToRefresh.length === ALL_SECTIONS.length
+      ? `Wrapped refreshed for ${username}.`
+      : `Updated ${formatSectionListForStatus(sectionsToRefresh)}.`;
+    setStatus(statusMessage);
   } catch (error) {
     console.error(error);
-    generatedData = null;
     setStatus(error.message || 'Something went wrong. Try again in a moment.', 'error');
   } finally {
+    downloadError.hidden = isCoverReady;
+    toggleDownload(isCoverReady);
     setLoading(false);
   }
 }
@@ -257,6 +350,64 @@ function normaliseGenreLabel(value) {
   return trimmed;
 }
 
+async function updateSections(username, sections) {
+  const tasks = [];
+
+  if (sections.includes('artists')) {
+    tasks.push((async () => {
+      const artists = await fetchJson(`/top/artists/${encodeURIComponent(username)}/5`);
+      generatedData.artists = artists;
+      topArtistsEl.textContent = formatRankedList(artists);
+    })());
+  }
+
+  if (sections.includes('tracks')) {
+    tasks.push((async () => {
+      const tracks = await fetchJson(`/top/tracks/${encodeURIComponent(username)}/5`);
+      generatedData.tracks = tracks;
+      topTracksEl.textContent = formatRankedList(tracks);
+    })());
+  }
+
+  if (sections.includes('time')) {
+    tasks.push((async () => {
+      const minutes = await fetchText(`/time/total/${encodeURIComponent(username)}`);
+      generatedData.minutes = minutes;
+      listenTimeEl.textContent = minutes;
+    })());
+  }
+
+  if (sections.includes('genre')) {
+    tasks.push((async () => {
+      const genre = await fetchText(`/top/genre/user/${encodeURIComponent(username)}`);
+      const normalised = normaliseGenreLabel(genre);
+      generatedData.genre = normalised;
+      topGenreEl.textContent = normalised;
+    })());
+  }
+
+  if (sections.includes('image')) {
+    tasks.push((async () => {
+      isCoverReady = await loadCoverArt(username);
+    })());
+  }
+
+  await Promise.all(tasks);
+
+  if (!sections.includes('artists') && Array.isArray(generatedData.artists)) {
+    topArtistsEl.textContent = formatRankedList(generatedData.artists);
+  }
+  if (!sections.includes('tracks') && Array.isArray(generatedData.tracks)) {
+    topTracksEl.textContent = formatRankedList(generatedData.tracks);
+  }
+  if (!sections.includes('time') && typeof generatedData.minutes === 'string') {
+    listenTimeEl.textContent = generatedData.minutes;
+  }
+  if (!sections.includes('genre') && typeof generatedData.genre === 'string') {
+    topGenreEl.textContent = normaliseGenreLabel(generatedData.genre);
+  }
+}
+
 function drawCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -273,14 +424,48 @@ function drawCanvas() {
   }
 
   if (isCoverReady && artistImg.complete && artistImg.naturalWidth > 0) {
-    ctx.drawImage(artistImg, 268, 244, 544, 544);
+    const destX = 268;
+    const destY = 244;
+    const destSize = 544;
+    const imgWidth = artistImg.naturalWidth;
+    const imgHeight = artistImg.naturalHeight;
+
+    let sourceX = 0;
+    let sourceY = 0;
+    let sourceWidth = imgWidth;
+    let sourceHeight = imgHeight;
+
+    if (imgWidth > 0 && imgHeight > 0) {
+      const imgAspect = imgWidth / imgHeight;
+      if (imgAspect > 1) {
+        sourceHeight = imgHeight;
+        sourceWidth = imgHeight;
+        sourceX = Math.floor((imgWidth - sourceWidth) / 2);
+      } else if (imgAspect < 1) {
+        sourceWidth = imgWidth;
+        sourceHeight = imgWidth;
+        sourceY = Math.floor((imgHeight - sourceHeight) / 2);
+      }
+    }
+
+    ctx.drawImage(
+      artistImg,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      destX,
+      destY,
+      destSize,
+      destSize,
+    );
   }
 
   const palette = getPalette(theme);
-  const listHeadingY = 1030;
-  const listStartY = 1110;
-  const summaryLabelY = 1620;
-  const summaryValueY = 1695;
+  const listHeadingY = 1080;
+  const listStartY = 1180;
+  const summaryLabelY = 1700;
+  const summaryValueY = 1775;
 
   ctx.fillStyle = palette.label;
   ctx.textBaseline = 'top';
@@ -289,9 +474,11 @@ function drawCanvas() {
   ctx.fillText('Top Artists', 112, listHeadingY);
   ctx.fillText('Top Tracks', 590, listHeadingY);
 
+  const artistList = Array.isArray(generatedData.artists) ? generatedData.artists : [];
+  const trackList = Array.isArray(generatedData.tracks) ? generatedData.tracks : [];
   ctx.font = '700 40px Nunito';
-  drawList(generatedData.artists, 112, listStartY, palette.value);
-  drawList(generatedData.tracks, 590, listStartY, palette.value);
+  drawList(artistList, 112, listStartY, palette.value);
+  drawList(trackList, 590, listStartY, palette.value);
 
   ctx.font = '400 40px Nunito';
   ctx.fillStyle = palette.label;
@@ -300,14 +487,17 @@ function drawCanvas() {
 
   ctx.font = '700 68px Nunito';
   ctx.fillStyle = palette.value;
-  ctx.fillText(generatedData.minutes, 112, summaryValueY);
-  ctx.fillText(truncateForCanvas(generatedData.genre, 20), 590, summaryValueY);
+  const minutesLabel = typeof generatedData.minutes === 'string' ? generatedData.minutes : '0';
+  const genreLabel = truncateForCanvas(normaliseGenreLabel(generatedData.genre), 20);
+  ctx.fillText(minutesLabel, 112, summaryValueY);
+  ctx.fillText(genreLabel, 590, summaryValueY);
 }
 
 function drawList(items, x, startY, color) {
-  const lineHeight = 70;
+  const lineHeight = 72;
   ctx.fillStyle = color;
-  items.forEach((item, index) => {
+  const list = Array.isArray(items) ? items : [];
+  list.forEach((item, index) => {
     const label = `${index + 1}. ${truncateForCanvas(item, 24)}`;
     ctx.fillText(label, x, startY + index * lineHeight);
   });
