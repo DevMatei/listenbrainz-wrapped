@@ -86,3 +86,5 @@ my code is unreadable but it works 😭
 ## 📜 license
 
 AGPL-3.0 — share alike
+
+Note: This project isn’t affiliated with or endorsed by Spotify, ListenBrainz, or MusicBrainz. It’s just a fan-made thing built for fun.
