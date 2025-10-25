@@ -20,6 +20,10 @@ const SECTION_LABELS = {
   genre: 'Top genre',
   image: 'Artist image',
 };
+const SERVICE_LABELS = {
+  musicbrainz: 'MusicBrainz',
+  navidrome: 'Navidrome',
+};
 
 function formatSectionListForStatus(sections) {
   if (!sections.length) {
@@ -64,6 +68,126 @@ function parseSectionSelection(raw) {
     selections.add('image');
   }
   return Array.from(selections);
+}
+
+const serviceInput = document.getElementById('service');
+const serviceDropdown = document.querySelector('[data-service-dropdown]');
+const serviceToggle = serviceDropdown ? serviceDropdown.querySelector('[data-dropdown-toggle]') : null;
+const serviceMenu = serviceDropdown ? serviceDropdown.querySelector('[data-dropdown-menu]') : null;
+const serviceOptions = serviceDropdown ? Array.from(serviceDropdown.querySelectorAll('[data-dropdown-option]')) : [];
+const serviceCurrentLabel = serviceDropdown ? serviceDropdown.querySelector('.service-select__current') : null;
+
+function getServiceLabel(key) {
+  return SERVICE_LABELS[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : 'MusicBrainz');
+}
+
+function getSelectedService() {
+  return (serviceInput && serviceInput.value) || 'musicbrainz';
+}
+
+function updateServiceSelection(value, labelText) {
+  if (serviceInput) {
+    serviceInput.value = value;
+  }
+  if (serviceCurrentLabel) {
+    serviceCurrentLabel.textContent = labelText || getServiceLabel(value);
+  }
+  serviceOptions.forEach((option) => {
+    const isActive = option.dataset.value === value && option.getAttribute('aria-disabled') !== 'true';
+    option.classList.toggle('is-active', isActive);
+    option.setAttribute('aria-selected', String(isActive));
+  });
+}
+
+function openServiceDropdown() {
+  if (!serviceDropdown) {
+    return;
+  }
+  serviceDropdown.classList.add('is-open');
+  if (serviceToggle) {
+    serviceToggle.setAttribute('aria-expanded', 'true');
+  }
+  if (serviceMenu) {
+    serviceMenu.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function closeServiceDropdown() {
+  if (!serviceDropdown) {
+    return;
+  }
+  serviceDropdown.classList.remove('is-open');
+  if (serviceToggle) {
+    serviceToggle.setAttribute('aria-expanded', 'false');
+  }
+  if (serviceMenu) {
+    serviceMenu.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function toggleServiceDropdown() {
+  if (!serviceDropdown) {
+    return;
+  }
+  if (serviceDropdown.classList.contains('is-open')) {
+    closeServiceDropdown();
+  } else {
+    openServiceDropdown();
+  }
+}
+
+function setupServiceDropdown() {
+  if (!serviceDropdown) {
+    return;
+  }
+  if (serviceToggle) {
+    serviceToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleServiceDropdown();
+    });
+  }
+  serviceOptions.forEach((option) => {
+    option.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (
+        option.classList.contains('service-select__option--disabled')
+        || option.getAttribute('aria-disabled') === 'true'
+      ) {
+        return;
+      }
+      const value = option.dataset.value || 'musicbrainz';
+      const label = option.dataset.label || getServiceLabel(value);
+      updateServiceSelection(value, label);
+      closeServiceDropdown();
+    });
+  });
+  document.addEventListener('click', (event) => {
+    if (serviceDropdown && !serviceDropdown.contains(event.target)) {
+      closeServiceDropdown();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeServiceDropdown();
+    }
+  });
+  if (serviceMenu) {
+    serviceMenu.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function withService(path) {
+  const service = getSelectedService();
+  if (!service) {
+    return path;
+  }
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}service=${encodeURIComponent(service)}`;
+}
+
+if (serviceDropdown) {
+  updateServiceSelection(getSelectedService());
+  setupServiceDropdown();
 }
 
 const canvas = document.getElementById('canvas');
@@ -134,6 +258,9 @@ function toggleDownload(enabled) {
 function setLoading(isLoading) {
   loadingIndicator.hidden = !isLoading;
   downloadBtn.setAttribute('aria-busy', String(isLoading));
+  if (isLoading) {
+    closeServiceDropdown();
+  }
   form.querySelectorAll('input, button, select').forEach((element) => {
     if (element !== themeSelect) {
       element.disabled = isLoading;
@@ -160,15 +287,19 @@ async function generateWrapped(event) {
     return;
   }
 
+  const selectedService = getSelectedService();
   const hasExisting = Boolean(generatedData);
-  const sameUsername = hasExisting && generatedData.username === username;
+  const sameProfile = hasExisting
+    && generatedData.username === username
+    && generatedData.service === selectedService;
   let sectionsToRefresh = [...ALL_SECTIONS];
 
   if (hasExisting) {
+    const existingLabel = `"${generatedData.username}" via ${getServiceLabel(generatedData.service || 'musicbrainz')}`;
     const promptMessage = [
-      sameUsername
-        ? 'You already generated a wrapped for this username.'
-        : `Current wrapped belongs to "${generatedData.username}".`,
+      sameProfile
+        ? 'You already generated a wrapped for this selection.'
+        : `Current wrapped belongs to ${existingLabel}.`,
       'Type:',
       '- keep — keep the existing poster',
       '- new — refresh everything',
@@ -199,7 +330,7 @@ async function generateWrapped(event) {
     }
   }
 
-  if (!hasExisting || !sameUsername) {
+  if (!hasExisting || !sameProfile) {
     sectionsToRefresh = [...ALL_SECTIONS];
   }
 
@@ -221,6 +352,7 @@ async function generateWrapped(event) {
       generatedData = {};
     }
     generatedData.username = username;
+    generatedData.service = selectedService;
 
     await updateSections(username, sectionsToRefresh);
 
@@ -241,7 +373,7 @@ async function generateWrapped(event) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await fetch(withService(url), { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await parseError(response));
   }
@@ -249,7 +381,7 @@ async function fetchJson(url) {
 }
 
 async function fetchText(url) {
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await fetch(withService(url), { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await parseError(response));
   }
@@ -282,7 +414,7 @@ async function loadCoverArt(username) {
   }
 
   try {
-    const response = await fetch(`/top/img/${encodeURIComponent(username)}`, { cache: 'no-store' });
+    const response = await fetch(withService(`/top/img/${encodeURIComponent(username)}`), { cache: 'no-store' });
     if (!response.ok) {
       throw new Error('Artist image unavailable');
     }

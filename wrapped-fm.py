@@ -1,3 +1,5 @@
+import hashlib
+import logging
 import os
 import time
 from collections import Counter
@@ -7,7 +9,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote
 
 import requests
-from flask import Flask, Response, abort, jsonify
+from flask import Flask, Response, abort, jsonify, request
 from requests import Response as RequestsResponse
 from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
@@ -15,10 +17,19 @@ from urllib3.util.retry import Retry
 
 try:
     from flask_limiter import Limiter
-    from flask_limiter.util import get_remote_address
 except ImportError:  # pragma: no cover - optional dependency documented in requirements
     Limiter = None  # type: ignore
-    get_remote_address = None  # type: ignore
+
+def _env_bool(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("wrapped_fm")
 
 LISTENBRAINZ_API = os.getenv("LISTENBRAINZ_API", "https://api.listenbrainz.org/1")
 MUSICBRAINZ_API = os.getenv("MUSICBRAINZ_API", "https://musicbrainz.org/ws/2")
@@ -44,6 +55,8 @@ DEFAULT_RATE_LIMIT = os.getenv("APP_RATE_LIMIT", "90 per minute")
 STATS_RATE_LIMIT = os.getenv("APP_STATS_RATE_LIMIT", "45 per minute")
 IMAGE_RATE_LIMIT = os.getenv("APP_IMAGE_RATE_LIMIT", "15 per minute")
 RATE_LIMIT_STORAGE = os.getenv("RATE_LIMIT_STORAGE", "memory://")
+RATE_LIMIT_SALT = os.getenv("APP_RATE_LIMIT_SALT", "")
+TRUST_PROXY_HEADERS = _env_bool("APP_TRUST_PROXY_HEADERS", "false")
 
 LISTENBRAINZ_USER_AGENT = os.getenv(
     "LISTENBRAINZ_USER_AGENT",
@@ -80,6 +93,7 @@ POPULAR_GENRES = {
     "dance",
     "lo-fi",
 }
+LASTFM_PLACEHOLDER_HASHES = {"2a96cbd8b46e442fc41c2b86b821562f"}
 
 
 def _configure_session(session: requests.Session, retries: int = 3) -> None:
@@ -133,11 +147,32 @@ _configure_session(lastfm_session)
 
 app = Flask(__name__, static_url_path="")
 
-if Limiter and get_remote_address:
+def _resolve_client_ip() -> str:
+    if TRUST_PROXY_HEADERS:
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        if forwarded_for:
+            candidate = forwarded_for.split(",")[0].strip()
+            if candidate:
+                return candidate
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip.strip()
+    return request.remote_addr or "0.0.0.0"
+
+
+def _rate_limit_key() -> str:
+    client_ip = _resolve_client_ip()
+    seed = f"{client_ip}|{RATE_LIMIT_SALT}".encode("utf-8")
+    return hashlib.blake2s(seed, digest_size=16).hexdigest()
+
+
+if Limiter:
     limiter: Optional[Limiter] = Limiter(
-        key_func=get_remote_address,
+        key_func=_rate_limit_key,
         default_limits=[DEFAULT_RATE_LIMIT],
         storage_uri=RATE_LIMIT_STORAGE,
+        strategy="moving-window",
+        headers_enabled=True,
     )
     limiter.init_app(app)
 else:  # pragma: no cover - only when limiter is missing
@@ -532,6 +567,21 @@ def _artist_image_candidates(artist_mbid: str) -> List[str]:
     return candidates
 
 
+def _fetch_binary_image(url: str) -> Optional[Tuple[str, bytes]]:
+    response = _request_with_handling(image_session, url)
+    if response.status_code == 404 or response.status_code >= 500:
+        return None
+    if not response.ok:
+        return None
+    content_type = response.headers.get("Content-Type", "")
+    if "image" not in content_type.lower():
+        return None
+    content = response.content
+    if not content:
+        return None
+    return content_type, content
+
+
 def _collect_artist_candidates(username: str) -> List[Tuple[str, Optional[str]]]:
     artists = _get_top_artists_payload(username, COVER_ART_LOOKUP_LIMIT)
     candidates: List[Tuple[str, Optional[str]]] = []
@@ -546,34 +596,86 @@ def _collect_artist_candidates(username: str) -> List[Tuple[str, Optional[str]]]
 @lru_cache(maxsize=256)
 def _download_artist_image(artist_mbid: str) -> Optional[Tuple[str, bytes]]:
     for candidate in _artist_image_candidates(artist_mbid):
-        response = _request_with_handling(image_session, candidate)
-        if response.status_code == 404 or response.status_code >= 500:
-            continue
-        if not response.ok:
-            continue
-        content_type = response.headers.get("Content-Type", "")
-        if "image" not in content_type.lower():
-            continue
-        content = response.content
-        if not content:
-            continue
-        return content_type, content
+        art = _fetch_binary_image(candidate)
+        if art:
+            return art
     return None
+
+
+def _is_lastfm_placeholder(url: str) -> bool:
+    lowered = url.lower()
+    return any(placeholder in lowered for placeholder in LASTFM_PLACEHOLDER_HASHES)
 
 
 def _select_lastfm_image(images: List[Dict]) -> Optional[str]:
     if not images:
         return None
     size_order = {"mega": 6, "extralarge": 5, "large": 4, "medium": 3, "small": 2}
-    candidates = [
-        (size_order.get(image.get("size", "").lower(), 0), image.get("#text", ""))
-        for image in images
-    ]
-    candidates = [entry for entry in candidates if entry[1]]
+    candidates: List[Tuple[int, str]] = []
+    for image in images:
+        url = image.get("#text", "")
+        if not url or _is_lastfm_placeholder(url):
+            continue
+        size_rank = size_order.get(image.get("size", "").lower(), 0)
+        candidates.append((size_rank, url))
     if not candidates:
         return None
     candidates.sort(key=lambda item: item[0], reverse=True)
     return candidates[0][1]
+
+
+def _fetch_lastfm_payload(
+    method: str,
+    *,
+    artist_name: Optional[str] = None,
+    artist_mbid: Optional[str] = None,
+    extra_params: Optional[Dict[str, str]] = None,
+) -> Dict:
+    if not LASTFM_API_KEY:
+        return {}
+    params: Dict[str, str] = {
+        "method": method,
+        "api_key": LASTFM_API_KEY,
+        "format": "json",
+        "autocorrect": "1",
+    }
+    if artist_name:
+        params["artist"] = artist_name
+    if artist_mbid:
+        params["mbid"] = artist_mbid
+    if extra_params:
+        params.update(extra_params)
+    response = _request_with_handling(lastfm_session, LASTFM_API, params=params)
+    if response.status_code == 404 or not response.ok:
+        logger.debug("Last.fm returned %s for %s", response.status_code, method)
+        return {}
+    try:
+        payload = response.json()
+    except ValueError:
+        return {}
+    if isinstance(payload, dict) and payload.get("error"):
+        logger.debug(
+            "Last.fm error for %s: %s",
+            method,
+            payload.get("message") or payload.get("error"),
+        )
+        return {}
+    return payload
+
+
+def _lookup_lastfm_album_image(artist_name: str, artist_mbid: Optional[str]) -> Optional[str]:
+    payload = _fetch_lastfm_payload(
+        "artist.gettopalbums",
+        artist_name=artist_name,
+        artist_mbid=artist_mbid,
+        extra_params={"limit": "5"},
+    )
+    top_albums = (payload.get("topalbums") or {}).get("album") or []
+    for album in top_albums:
+        image_url = _select_lastfm_image(album.get("image") or [])
+        if image_url:
+            return image_url
+    return None
 
 
 @lru_cache(maxsize=256)
@@ -581,45 +683,22 @@ def _download_lastfm_artist_image(artist_name: str, artist_mbid: Optional[str]) 
     if not LASTFM_API_KEY or not artist_name:
         return None
 
-    params = {
-        "method": "artist.getinfo",
-        "artist": artist_name,
-        "api_key": LASTFM_API_KEY,
-        "format": "json",
-        "autocorrect": "1",
-    }
-    if artist_mbid:
-        params["mbid"] = artist_mbid
-    response = _request_with_handling(lastfm_session, LASTFM_API, params=params)
-    if response.status_code == 404 or not response.ok:
-        return None
-
-    try:
-        payload = response.json()
-    except ValueError:
-        return None
-
-    if isinstance(payload, dict) and payload.get("error"):
-        return None
-
+    payload = _fetch_lastfm_payload(
+        "artist.getinfo",
+        artist_name=artist_name,
+        artist_mbid=artist_mbid,
+    )
     artist_info = (payload or {}).get("artist") or {}
     image_url = _select_lastfm_image(artist_info.get("image") or [])
+    if not image_url and artist_name:
+        image_url = _lookup_lastfm_album_image(artist_name, artist_mbid)
     if not image_url:
         return None
 
-    image_response = _request_with_handling(image_session, image_url)
-    if image_response.status_code == 404 or image_response.status_code >= 500:
-        return None
-    if not image_response.ok:
-        return None
-
-    content_type = image_response.headers.get("Content-Type", "")
-    if "image" not in content_type.lower():
-        return None
-    content = image_response.content
-    if not content:
-        return None
-    return content_type, content
+    art = _fetch_binary_image(image_url)
+    if art:
+        return art
+    return None
 
 
 @lru_cache(maxsize=512)

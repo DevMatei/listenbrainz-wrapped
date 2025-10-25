@@ -23,16 +23,14 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+**Browser / Environment**
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+- **Browser:** (e.g., Chrome, Firefox, Safari)
+- **Operating system:** (e.g., Windows 10, macOS 14.0, Ubuntu 22.04, Arch Linux)
+- **Extensions / plugins:** (list any enabled that might affect behavior)
+- **Incognito / private mode:** (Yes / No)
+
+Add specific values above to help us reproduce the issue.
 
 **Additional context**
 Add any other context about the problem here.

@@ -1,33 +1,86 @@
-# ListenBrainz Wrapped
-A Spotify Wrapped style (totally not 1:1 copy of wrapped image) summary for your ListenBrainz scrobbles, built with Flask.
+# 🎧 ListenBrainz Wrapped
 
-# To-Do
-- [ ] Add Navidrome support for our dear self-hosters  
-- [ ] Speed up wrapped rendering speed
+wrapped generator for listenbrainz built with flask
+ 
+ 
+ 
+![preview](image-1.png)
 
-# Preview:
+## 🌐 website
+
 soon
 
-## Setup
-1. Install dependencies: `pip install -r requirements.txt` (or at minimum `flask` and `requests`).
-2. Run the app with any WSGI server, e.g. `gunicorn -w 4 -b <ip>:<port> wrapped-fm:app`.
-3. For local development you can use `start.sh <ip> <port>`.
+## 💡 why it’s cool
 
-The app talks directly to the public ListenBrainz, MusicBrainz, Cover Art Archive, and Wikimedia APIs (via Wikidata), so no API keys are required. If you need to customise requests, the following optional environment variables are supported:
+* grabs data from listenbrainz, musicbrainz, cover art archive and wikidata — all public, no tokens (unlesssssssss u want last.fm)
+* artist art uses last.fm first, then falls back to musicbrainz/wikidata
 
-- `LISTENBRAINZ_API` - override the ListenBrainz API base URL (default `https://api.listenbrainz.org/1`).
-- `MUSICBRAINZ_API` - override the MusicBrainz API base URL.
-- `COVER_ART_API` - override the Cover Art Archive base URL.
-- `LISTENBRAINZ_USER_AGENT` / `MUSICBRAINZ_USER_AGENT` - provide a custom User-Agent string.
-- `AVERAGE_TRACK_LENGTH_MINUTES` - adjust the minutes listened estimate (default `3.5`).
-- `COVER_ART_LOOKUP_LIMIT` - number of top releases/recordings to scan when searching for cover art (default `15`).
-- `AVERAGE_TRACK_SAMPLE_LIMIT` - number of top recordings sampled to estimate average track length (default `50`).
-- `LASTFM_API_KEY` - optional, enables higher quality artist images via Last.fm (recommended).
-- `LASTFM_API` - override the Last.fm API base URL.
-- `LASTFM_USER_AGENT` - provide a custom User-Agent when calling Last.fm.
+## ⚡ quickstart
 
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-good luck reading the code LMFAO
+make an `.env`
 
-## License
-wrapped-fm is licensed under the AGPL-3.0 license. Share alike, please!
+```
+FLASK_ENV=production
+SECRET_KEY=<something>
+```
+
+run it
+
+```bash
+gunicorn -w 4 -b 0.0.0.0:8000 wrapped-fm:app
+```
+
+or locally
+
+```bash
+./start.sh <host> <port>
+```
+
+### 🧠 production
+
+* reverse proxy + https
+* `APP_TRUST_PROXY_HEADERS=1` if proxying
+* `APP_RATE_LIMIT_SALT` = random string
+* 1 worker per instance unless you know what you’re doing
+* add `FLASK_DEBUG=0`, `PYTHONUNBUFFERED=1`, `LOG_LEVEL=info`
+
+## ⚙️ config
+
+### core
+
+`LISTENBRAINZ_API=https://api.listenbrainz.org/1`
+`MUSICBRAINZ_API`, `COVER_ART_API`
+`LISTENBRAINZ_RANGE=year`
+`AVERAGE_TRACK_LENGTH_MINUTES`, `COVER_ART_LOOKUP_LIMIT`
+
+### integrations
+
+`LASTFM_API_KEY` – better artist images
+`LASTFM_API`, `LASTFM_USER_AGENT`
+
+### performance
+
+`HTTP_TIMEOUT`, `LISTENBRAINZ_CACHE_TTL`, `LISTENBRAINZ_CACHE_SIZE`
+`APP_RATE_LIMIT`, `APP_STATS_RATE_LIMIT`, `APP_IMAGE_RATE_LIMIT`
+`APP_RATE_LIMIT_SALT`, `APP_TRUST_PROXY_HEADERS`
+
+### frontend
+
+uses [anime.js](https://animejs.com/) cuz it’s smooth as hell
+
+## 🧩 to-do
+
+* [ ] navidrome support for self-hosters
+* [ ] faster wrapped rendering
+
+originally made for last.fm by [jeff parla](https://github.com/parlajatwit) <3
+my code is unreadable but it works 😭
+
+## 📜 license
+
+AGPL-3.0 — share alike
