@@ -2,8 +2,8 @@
 A Spotify Wrapped style (totally not 1:1 copy of wrapped image) summary for your ListenBrainz scrobbles, built with Flask.
 
 # To do:
-[] Add Navidrome support for our dear self-hosters
-[] Speed up wrapped rendering speed
+[ ] Add Navidrome support for our dear self-hosters
+[ ] Speed up wrapped rendering speed
 
 # Preview:
 soon
