@@ -8,7 +8,7 @@ wrapped generator for listenbrainz built with flask
 
 ## 🌐 website
 
-soon
+https://wrapped.devmatei.com/
 
 ## 💡 why it’s cool
 
