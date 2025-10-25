@@ -22,11 +22,13 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-make an `.env`
+copy `.env.example` to `.env` and tweak the basics:
 
 ```
 FLASK_ENV=production
 SECRET_KEY=<something>
+LASTFM_API_KEY=<your-lastfm-key>
+# set HTTP_PROXY / HTTPS_PROXY if you tunnel through a proxy
 ```
 
 run it
