@@ -1,2 +1,3 @@
 Flask>=2.2,<3.0
 requests>=2.31
+Flask-Limiter>=3.5

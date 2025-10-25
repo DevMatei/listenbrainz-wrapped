@@ -13,6 +13,13 @@ from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
 from urllib3.util.retry import Retry
 
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+except ImportError:  # pragma: no cover - optional dependency documented in requirements
+    Limiter = None  # type: ignore
+    get_remote_address = None  # type: ignore
+
 LISTENBRAINZ_API = os.getenv("LISTENBRAINZ_API", "https://api.listenbrainz.org/1")
 MUSICBRAINZ_API = os.getenv("MUSICBRAINZ_API", "https://musicbrainz.org/ws/2")
 COVER_ART_API = os.getenv("COVER_ART_API", "https://coverartarchive.org/release")
@@ -25,12 +32,18 @@ WIKIDATA_ENTITY_API = os.getenv(
     "WIKIDATA_ENTITY_API",
     "https://www.wikidata.org/wiki/Special:EntityData",
 )
+LISTENBRAINZ_CACHE_TTL = int(os.getenv("LISTENBRAINZ_CACHE_TTL", "60"))
+LISTENBRAINZ_CACHE_SIZE = int(os.getenv("LISTENBRAINZ_CACHE_SIZE", "256"))
 LASTFM_API = os.getenv("LASTFM_API", "https://ws.audioscrobbler.com/2.0/")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 LASTFM_USER_AGENT = os.getenv(
     "LASTFM_USER_AGENT",
     "spotify-wrapped-listenbrainz/1.0 (+https://github.com/devmatei/spotify-wrapped)",
 )
+DEFAULT_RATE_LIMIT = os.getenv("APP_RATE_LIMIT", "90 per minute")
+STATS_RATE_LIMIT = os.getenv("APP_STATS_RATE_LIMIT", "45 per minute")
+IMAGE_RATE_LIMIT = os.getenv("APP_IMAGE_RATE_LIMIT", "15 per minute")
+RATE_LIMIT_STORAGE = os.getenv("RATE_LIMIT_STORAGE", "memory://")
 
 LISTENBRAINZ_USER_AGENT = os.getenv(
     "LISTENBRAINZ_USER_AGENT",
@@ -120,6 +133,27 @@ _configure_session(lastfm_session)
 
 app = Flask(__name__, static_url_path="")
 
+if Limiter and get_remote_address:
+    limiter: Optional[Limiter] = Limiter(
+        key_func=get_remote_address,
+        default_limits=[DEFAULT_RATE_LIMIT],
+        storage_uri=RATE_LIMIT_STORAGE,
+    )
+    limiter.init_app(app)
+else:  # pragma: no cover - only when limiter is missing
+    limiter = None
+
+listenbrainz_cache: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], Tuple[float, Dict]] = {}
+
+
+def rate_limit(limit_value: str):
+    def decorator(func):
+        if limiter:
+            return limiter.limit(limit_value)(func)
+        return func
+
+    return decorator
+
 
 @app.route("/")
 def root() -> Response:
@@ -142,6 +176,13 @@ def _request_with_handling(
 
 def _fetch_listenbrainz(path: str, params: Optional[Dict[str, str]] = None) -> Dict:
     url = f"{LISTENBRAINZ_API}{path}"
+    param_items: Tuple[Tuple[str, str], ...] = tuple(sorted((params or {}).items()))
+    cache_key = (path, param_items)
+    now = time.time()
+    cached = listenbrainz_cache.get(cache_key)
+    if cached and now - cached[0] < LISTENBRAINZ_CACHE_TTL:
+        return cached[1]
+
     response = _request_with_handling(listenbrainz_session, url, params=params)
 
     if response.status_code == 404:
@@ -183,6 +224,10 @@ def _fetch_listenbrainz(path: str, params: Optional[Dict[str, str]] = None) -> D
     payload = data.get("payload") if isinstance(data, dict) else None
     if payload is None:
         abort(502, description="Missing payload in ListenBrainz response")
+    listenbrainz_cache[cache_key] = (now, payload)
+    if len(listenbrainz_cache) > LISTENBRAINZ_CACHE_SIZE:
+        oldest_key = min(listenbrainz_cache.items(), key=lambda item: item[1][0])[0]
+        listenbrainz_cache.pop(oldest_key, None)
     return payload
 
 
@@ -261,6 +306,7 @@ def _format_ranked_lines(items: Iterable[str]) -> str:
 
 
 @app.route("/top/albums/<username>/<int:number>")
+@rate_limit(STATS_RATE_LIMIT)
 def get_top_albums(username: str, number: int) -> str:
     releases = _get_top_releases_payload(username, number)
     names = [release.get("release_name", "Unknown Release") for release in releases]
@@ -268,12 +314,14 @@ def get_top_albums(username: str, number: int) -> str:
 
 
 @app.route("/top/artists/<username>/<int:number>")
+@rate_limit(STATS_RATE_LIMIT)
 def get_top_artists(username: str, number: int):
     artists = _get_top_artists_payload(username, number)
     return jsonify([artist.get("artist_name", "Unknown artist") for artist in artists])
 
 
 @app.route("/top/artists/<username>/<int:number>/formatted")
+@rate_limit(STATS_RATE_LIMIT)
 def get_top_artists_formatted(username: str, number: int) -> str:
     artists = _get_top_artists_payload(username, number)
     names = [artist.get("artist_name", "Unknown artist") for artist in artists]
@@ -281,12 +329,14 @@ def get_top_artists_formatted(username: str, number: int) -> str:
 
 
 @app.route("/top/tracks/<username>/<int:number>")
+@rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks(username: str, number: int):
     tracks = _get_top_tracks_payload(username, number)
     return jsonify([track.get("track_name", "Unknown track") for track in tracks])
 
 
 @app.route("/top/tracks/<username>/<int:number>/formatted")
+@rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks_formatted(username: str, number: int) -> str:
     tracks = _get_top_tracks_payload(username, number)
     names = [track.get("track_name", "Unknown track") for track in tracks]
@@ -294,6 +344,7 @@ def get_top_tracks_formatted(username: str, number: int) -> str:
 
 
 @app.route("/time/total/<username>")
+@rate_limit(STATS_RATE_LIMIT)
 def get_listen_time(username: str) -> str:
     ranges = [LISTEN_RANGE]
     if LISTEN_RANGE != "all_time":
@@ -625,6 +676,7 @@ def _calculate_average_track_minutes(username: str) -> Optional[float]:
 
 
 @app.route("/top/genre/user/<username>")
+@rate_limit(STATS_RATE_LIMIT)
 def get_top_genre_user(username: str) -> str:
     return _get_top_genre(username)
 
@@ -641,6 +693,7 @@ def _search_artist_mbid(artist_name: str) -> Optional[str]:
 
 
 @app.route("/top/genre/artist/<artist_name>")
+@rate_limit(STATS_RATE_LIMIT)
 def get_top_genre_artist(artist_name: str) -> str:
     artist_mbid = _search_artist_mbid(artist_name)
     if not artist_mbid:
@@ -712,6 +765,7 @@ def _download_cover_art(release_mbid: str, caa_release_mbid: Optional[str]) -> O
 
 
 @app.route("/top/img/<username>")
+@rate_limit(IMAGE_RATE_LIMIT)
 def get_top_artist_img(username: str) -> Response:
     artist_candidates = _collect_artist_candidates(username)
 
