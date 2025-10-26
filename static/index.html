@@ -5,7 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>ListenBrainz Wrapped</title>
+    <title>ListenBrainz Wrapped — shareable stats for your scrobbles</title>
+    <meta name="description" content="Generate Spotify Wrapped style posters for your ListenBrainz scrobbles. Free, open-source, and runnable on any homelab.">
+    <meta name="keywords" content="ListenBrainz, Spotify Wrapped alternative, music stats, open source, scrobbles">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://wrapped.devmatei.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="ListenBrainz Wrapped">
+    <meta property="og:description" content="Create a beautiful poster of your top ListenBrainz artists, tracks, genres, and listening time.">
+    <meta property="og:url" content="https://wrapped.devmatei.com/">
+    <meta property="og:image" content="https://raw.githubusercontent.com/DevMatei/listenbrainz-wrapped/main/static/img/purple.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ListenBrainz Wrapped">
+    <meta name="twitter:description" content="Open-source ListenBrainz Wrapped generator with Last.fm artwork and custom uploads.">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/DevMatei/listenbrainz-wrapped/main/static/img/purple.png">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "ListenBrainz Wrapped",
+        "applicationCategory": "MusicApplication",
+        "operatingSystem": "Cross-platform",
+        "url": "https://wrapped.devmatei.com/",
+        "description": "Generate ListenBrainz Spotify Wrapped style recaps with custom artwork and Last.fm imagery.",
+        "creator": {
+          "@type": "Person",
+          "name": "Matei"
+        }
+      }
+    </script>
     <link rel="stylesheet" href="style.css">
     <script defer src="request.js"></script>
   </head>
@@ -55,7 +83,7 @@
                   aria-expanded="false"
                   data-dropdown-toggle
                 >
-                  <span class="service-select__current">MusicBrainz</span>
+                  <span class="service-select__current">ListenBrainz</span>
                   <svg
                     class="service-select__chevron"
                     width="16"
@@ -85,11 +113,11 @@
                       class="service-select__option"
                       role="option"
                       aria-selected="true"
-                      data-value="musicbrainz"
-                      data-label="MusicBrainz"
+                      data-value="listenbrainz"
+                      data-label="ListenBrainz"
                       data-dropdown-option
                     >
-                      MusicBrainz
+                      ListenBrainz
                     </button>
                   </li>
                   <li>
@@ -107,7 +135,7 @@
                     </button>
                   </li>
                 </ul>
-                <input type="hidden" id="service" name="service" value="musicbrainz">
+                <input type="hidden" id="service" name="service" value="listenbrainz">
               </div>
             </div>
           </div>
@@ -120,6 +148,31 @@
               Download unavailable: artist image could not be loaded.
             </span>
           </div>
+          <div class="artwork-controls">
+            <label class="form__label">Artwork options</label>
+            <div class="artwork-controls__buttons">
+              <button type="button" class="btn btn--ghost" id="artwork-upload-btn">Upload artwork</button>
+              <button type="button" class="btn btn--ghost" id="artwork-reset-btn" aria-disabled="true" disabled>Reset to auto</button>
+            </div>
+            <input type="file" id="artwork-upload" accept="image/*" hidden>
+            <p class="artwork-controls__hint">
+              Override the Last.fm artwork if it looks wrong or you just prefer a different image. We keep it in local storage; if that fails we temporarily store it for 1 hour and then delete it automatically.
+            </p>
+            <div class="artwork-editor" aria-disabled="true">
+              <div class="artwork-editor__control">
+                <label for="artwork-scale">Zoom</label>
+                <input type="range" id="artwork-scale" min="0.8" max="1.6" step="0.01" value="1" disabled>
+              </div>
+              <div class="artwork-editor__control">
+                <label for="artwork-offset-x">Horizontal</label>
+                <input type="range" id="artwork-offset-x" min="-200" max="200" step="1" value="0" disabled>
+              </div>
+              <div class="artwork-editor__control">
+                <label for="artwork-offset-y">Vertical</label>
+                <input type="range" id="artwork-offset-y" min="-200" max="200" step="1" value="0" disabled>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -129,7 +182,7 @@
         </div>
       </section>
 
-      <section class="card card--details" aria-live="polite">
+      <section class="card card--details card--full" aria-live="polite">
         <div class="card__body results" hidden>
           <h2>Your highlights</h2>
           <div class="results__grid">
@@ -150,6 +203,65 @@
               <p id="top-genre"></p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="card card--repo" aria-label="Project links">
+        <div class="card__body">
+          <h2>Open source & self-hostable</h2>
+          <p>
+            This project is AGPL-licensed, built in public, and happy to live on your homelab. Star the repo, open issues, or lob pull requests if you break something (or make it better).
+          </p>
+          <a class="link-button" href="https://github.com/DevMatei/listenbrainz-wrapped" target="_blank" rel="noopener noreferrer">
+            View the GitHub repo
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M7 17L17 7M17 7H9M17 7V15"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </a>
+        </div>
+      </section>
+
+      <section class="card card--purpose" aria-label="Why ListenBrainz Wrapped exists">
+        <div class="card__body">
+          <h2>Why this exists</h2>
+          <p>
+            Yeah, the idea is for people whose friends all use Spotify and post their Wrapped. When you share a ListenBrainz one everyone replies “wait, what’s that?”—so this bridges the gap. I swapped Spotify for Navidrome but still wanted that wrapped-moment vibe.
+          </p>
+          <p>
+            Share <a href="https://wrapped.devmatei.com" target="_blank" rel="noopener noreferrer">wrapped.devmatei.com</a>, flex your open music stats, and maybe convince someone to try self-hosting—or at least spark a nerdy chat.
+          </p>
+        </div>
+      </section>
+
+      <section class="card card--about" aria-label="About DevMatei">
+        <div class="card__body">
+          <h2>About Matei</h2>
+          <p>
+            I’m Matei (aka <a href="https://github.com/devmatei" target="_blank" rel="noopener noreferrer">DevMatei</a>) — a full-stack dev who lives for shipping playful tooling, tinkering with AI + homelab setups, and streaming on Twitch. If I’m not hacking on this, I’m gaming, vibing to music, or hanging with the indie web crowd (tea > coffee forever).
+          </p>
+          <p>
+            Want to collaborate, talk self-hosting, or peek at other experiments? Hit <a href="https://devmatei.com" target="_blank" rel="noopener noreferrer">devmatei.com</a>, say hi on socials, or drop me a note at <a href="mailto:hello@devmatei.com">hello@devmatei.com</a>.
+          </p>
+        </div>
+      </section>
+
+      <section class="card card--counter" aria-live="polite" aria-label="Live wrapped counter">
+        <div class="card__body">
+          <h2>Live wrapped counter</h2>
+          <p class="counter__value">
+            <span id="wrapped-count" aria-live="polite">0</span> wraps generated so far
+          </p>
+          <p class="counter__since">Tracking wraps since <span id="wrapped-count-since">Dec 2024</span>.</p>
+          <p class="counter__hint">
+            idk why i made this but whatever
+          </p>
         </div>
       </section>
     </main>

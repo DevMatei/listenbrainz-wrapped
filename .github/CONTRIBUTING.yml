@@ -1,0 +1,35 @@
+name: ListenBrainz Wrapped Contribution Guide
+description: |
+  Thanks for taking the time to contribute! This project powers the ListenBrainz Wrapped
+  UI/backend at https://wrapped.devmatei.com.
+
+contact:
+  - type: my socials
+    url: https://devmatei.com
+  - type: issues
+    url: https://github.com/DevMatei/listenbrainz-wrapped/issues/new/choose
+
+setup:
+  - Install Python 3.11+
+  - `python3 -m venv .venv && source .venv/bin/activate`
+  - `pip install -r requirements.txt`
+  - Copy `.env.example` to `.env` and tweak any overrides you need
+  - Run `./start.sh 0.0.0.0 5000` for a hot-reload dev server
+
+coding_style:
+  - No framework migrations yet—keep Flask views in `wrapped-fm.py`
+  - Prefer small, composable helpers and docstrings over giant inline blocks
+
+pull_request_checklist:
+  - [ ] Tests or manual repro steps provided (mention usernames / payloads if relevant)
+  - [ ] UI screenshots for major visual tweaks (desktop + mobile)
+  - [ ] Docs/README updated if the behavior or env vars changed
+  - [ ] Keep commits focused—open a new PR if you’re mixing unrelated changes
+
+labels:
+  good_first_issue: "good first issue"
+  help_wanted: "help wanted"
+
+notes:
+  - Need inspiration? Check the open issues tagged `help wanted`.
+  - Want to chat before building? Ping @DevMatei on GitHub or email him.
