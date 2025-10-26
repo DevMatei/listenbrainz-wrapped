@@ -3,8 +3,7 @@
 wrapped generator for listenbrainz built with flask
  
  
- 
-![preview](image-1.png)
+<img width="1857" height="983" alt="ListenBrainz Wrapped — shareable stats for your scrobbles" src="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c" />
 
 ## 🌐 website
 
