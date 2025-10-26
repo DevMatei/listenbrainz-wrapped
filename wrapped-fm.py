@@ -1,15 +1,19 @@
 import hashlib
+import io
 import logging
 import os
+import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from secrets import token_urlsafe
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote
 
 import requests
-from flask import Flask, Response, abort, jsonify, request
+from flask import Flask, Response, abort, jsonify, request, send_file
 from requests import Response as RequestsResponse
 from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
@@ -39,6 +43,13 @@ AVERAGE_TRACK_LENGTH_MINUTES = float(os.getenv("AVERAGE_TRACK_LENGTH_MINUTES", "
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "10"))
 COVER_ART_LOOKUP_LIMIT = int(os.getenv("COVER_ART_LOOKUP_LIMIT", "15"))
 AVERAGE_TRACK_SAMPLE_LIMIT = int(os.getenv("AVERAGE_TRACK_SAMPLE_LIMIT", "50"))
+MAX_TOP_RESULTS = int(os.getenv("APP_MAX_TOP_RESULTS", "15"))
+TEMP_ARTWORK_TTL_SECONDS = int(os.getenv("TEMP_ARTWORK_TTL_SECONDS", "3600"))
+TEMP_ARTWORK_MAX_BYTES = int(os.getenv("TEMP_ARTWORK_MAX_BYTES", str(6 * 1024 * 1024)))
+IMAGE_CONCURRENCY = int(os.getenv("APP_IMAGE_CONCURRENCY", "2"))
+IMAGE_QUEUE_LIMIT = int(os.getenv("APP_IMAGE_QUEUE_LIMIT", "10"))
+IMAGE_QUEUE_TIMEOUT = float(os.getenv("APP_IMAGE_QUEUE_TIMEOUT", "15"))
+HTTP_POOL_MAXSIZE = int(os.getenv("HTTP_POOL_MAXSIZE", "40"))
 WIKIDATA_ENTITY_API = os.getenv(
     "WIKIDATA_ENTITY_API",
     "https://www.wikidata.org/wiki/Special:EntityData",
@@ -57,6 +68,7 @@ IMAGE_RATE_LIMIT = os.getenv("APP_IMAGE_RATE_LIMIT", "15 per minute")
 RATE_LIMIT_STORAGE = os.getenv("RATE_LIMIT_STORAGE", "memory://")
 RATE_LIMIT_SALT = os.getenv("APP_RATE_LIMIT_SALT", "")
 TRUST_PROXY_HEADERS = _env_bool("APP_TRUST_PROXY_HEADERS", "false")
+WRAPPED_COUNT_FILE = Path(os.getenv("WRAPPED_COUNT_FILE", "data/wrapped-count.txt"))
 
 LISTENBRAINZ_USER_AGENT = os.getenv(
     "LISTENBRAINZ_USER_AGENT",
@@ -66,6 +78,7 @@ MUSICBRAINZ_USER_AGENT = os.getenv(
     "MUSICBRAINZ_USER_AGENT",
     "spotify-wrapped-listenbrainz/1.0 (+https://github.com/devmatei/spotify-wrapped)",
 )
+WRAPPED_COUNT_SINCE = os.getenv("WRAPPED_COUNT_SINCE", "2025-10-26")
 
 IGNORED_TAGS = {"seen live", "favorites", "favourites", "favorite", "ireland"}
 POPULAR_GENRES = {
@@ -96,7 +109,7 @@ POPULAR_GENRES = {
 LASTFM_PLACEHOLDER_HASHES = {"2a96cbd8b46e442fc41c2b86b821562f"}
 
 
-def _configure_session(session: requests.Session, retries: int = 3) -> None:
+def _configure_session(session: requests.Session, retries: int = 3, pool_maxsize: int = HTTP_POOL_MAXSIZE) -> None:
     retry = Retry(
         total=retries,
         read=retries,
@@ -107,7 +120,11 @@ def _configure_session(session: requests.Session, retries: int = 3) -> None:
         allowed_methods=("GET", "HEAD"),
         raise_on_status=False,
     )
-    adapter = HTTPAdapter(max_retries=retry)
+    adapter = HTTPAdapter(
+        max_retries=retry,
+        pool_connections=pool_maxsize,
+        pool_maxsize=pool_maxsize,
+    )
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
@@ -147,6 +164,15 @@ _configure_session(lastfm_session)
 
 app = Flask(__name__, static_url_path="")
 
+WRAPPED_COUNT_FILE.parent.mkdir(parents=True, exist_ok=True)
+wrapped_count_lock = threading.Lock()
+temp_artworks_lock = threading.Lock()
+temp_artworks: Dict[str, Tuple[float, bytes, str]] = {}
+image_queue_lock = threading.Lock()
+image_queue_size = 0
+image_download_semaphore = threading.BoundedSemaphore(max(1, IMAGE_CONCURRENCY))
+
+
 def _resolve_client_ip() -> str:
     if TRUST_PROXY_HEADERS:
         forwarded_for = request.headers.get("X-Forwarded-For", "")
@@ -181,6 +207,51 @@ else:  # pragma: no cover - only when limiter is missing
 listenbrainz_cache: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], Tuple[float, Dict]] = {}
 
 
+def _cleanup_temp_artworks_locked() -> None:
+    cutoff = time.time() - TEMP_ARTWORK_TTL_SECONDS
+    expired = [token for token, (stored_at, _, _) in temp_artworks.items() if stored_at < cutoff]
+    for token in expired:
+        temp_artworks.pop(token, None)
+
+
+def _read_wrapped_count_unlocked() -> int:
+    try:
+        return int(WRAPPED_COUNT_FILE.read_text().strip() or "0")
+    except FileNotFoundError:
+        WRAPPED_COUNT_FILE.write_text("0")
+        return 0
+    except ValueError:
+        WRAPPED_COUNT_FILE.write_text("0")
+        return 0
+
+
+def _read_wrapped_count() -> int:
+    with wrapped_count_lock:
+        return _read_wrapped_count_unlocked()
+
+
+def _increment_wrapped_count(delta: int = 1) -> int:
+    with wrapped_count_lock:
+        count = _read_wrapped_count_unlocked() + max(delta, 0)
+        WRAPPED_COUNT_FILE.write_text(str(count))
+        return count
+
+
+def _enter_image_queue() -> Optional[int]:
+    global image_queue_size
+    with image_queue_lock:
+        if image_queue_size >= IMAGE_QUEUE_LIMIT:
+            return None
+        image_queue_size += 1
+        return image_queue_size
+
+
+def _leave_image_queue() -> None:
+    global image_queue_size
+    with image_queue_lock:
+        image_queue_size = max(0, image_queue_size - 1)
+
+
 def rate_limit(limit_value: str):
     def decorator(func):
         if limiter:
@@ -193,6 +264,60 @@ def rate_limit(limit_value: str):
 @app.route("/")
 def root() -> Response:
     return app.send_static_file("index.html")
+
+
+@app.route("/metrics/wrapped", methods=["GET"])
+def get_wrapped_metric() -> Response:
+    return jsonify({"count": _read_wrapped_count(), "since": WRAPPED_COUNT_SINCE})
+
+
+@app.route("/metrics/wrapped", methods=["POST"])
+def increment_wrapped_metric() -> Response:
+    count = _increment_wrapped_count()
+    return jsonify({"count": count, "since": WRAPPED_COUNT_SINCE})
+
+
+@app.route("/artwork/upload", methods=["POST"])
+@rate_limit(IMAGE_RATE_LIMIT)
+def upload_custom_artwork() -> Response:
+    uploaded_file = request.files.get("artwork")
+    if uploaded_file is None or uploaded_file.filename == "":
+        abort(400, description="Missing artwork file")
+    data = uploaded_file.read()
+    if not data:
+        abort(400, description="Empty artwork file")
+    if len(data) > TEMP_ARTWORK_MAX_BYTES:
+        abort(413, description="Artwork exceeds size limit")
+    content_type = uploaded_file.mimetype or "application/octet-stream"
+    if "image" not in content_type.lower():
+        abort(400, description="Artwork must be an image")
+    token = token_urlsafe(12)
+    now = time.time()
+    with temp_artworks_lock:
+        _cleanup_temp_artworks_locked()
+        temp_artworks[token] = (now, data, content_type)
+    return jsonify({"token": token, "expires_in": TEMP_ARTWORK_TTL_SECONDS})
+
+
+@app.route("/artwork/<token>", methods=["GET"])
+def fetch_custom_artwork(token: str):
+    with temp_artworks_lock:
+        _cleanup_temp_artworks_locked()
+        entry = temp_artworks.get(token)
+        if not entry:
+            abort(404, description="Artwork expired")
+        stored_at, data, content_type = entry
+        if time.time() - stored_at > TEMP_ARTWORK_TTL_SECONDS:
+            temp_artworks.pop(token, None)
+            abort(410, description="Artwork expired")
+    response = send_file(
+        io.BytesIO(data),
+        mimetype=content_type,
+        as_attachment=False,
+        download_name=f"artwork-{token}.img",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _request_with_handling(
@@ -287,6 +412,10 @@ def _normalise_count(value: int) -> int:
     return max(int(value), 0)
 
 
+def _clamp_top_number(requested: int) -> int:
+    return max(1, min(int(requested), MAX_TOP_RESULTS))
+
+
 def _fetch_stat_payload(
     username: str, endpoint: str, key: str, *, count: Optional[int] = None
 ) -> Dict:
@@ -343,6 +472,7 @@ def _format_ranked_lines(items: Iterable[str]) -> str:
 @app.route("/top/albums/<username>/<int:number>")
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_albums(username: str, number: int) -> str:
+    number = _clamp_top_number(number)
     releases = _get_top_releases_payload(username, number)
     names = [release.get("release_name", "Unknown Release") for release in releases]
     return _format_ranked_lines(names)
@@ -351,6 +481,7 @@ def get_top_albums(username: str, number: int) -> str:
 @app.route("/top/artists/<username>/<int:number>")
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_artists(username: str, number: int):
+    number = _clamp_top_number(number)
     artists = _get_top_artists_payload(username, number)
     return jsonify([artist.get("artist_name", "Unknown artist") for artist in artists])
 
@@ -358,6 +489,7 @@ def get_top_artists(username: str, number: int):
 @app.route("/top/artists/<username>/<int:number>/formatted")
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_artists_formatted(username: str, number: int) -> str:
+    number = _clamp_top_number(number)
     artists = _get_top_artists_payload(username, number)
     names = [artist.get("artist_name", "Unknown artist") for artist in artists]
     return _format_ranked_lines(names)
@@ -366,6 +498,7 @@ def get_top_artists_formatted(username: str, number: int) -> str:
 @app.route("/top/tracks/<username>/<int:number>")
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks(username: str, number: int):
+    number = _clamp_top_number(number)
     tracks = _get_top_tracks_payload(username, number)
     return jsonify([track.get("track_name", "Unknown track") for track in tracks])
 
@@ -373,6 +506,7 @@ def get_top_tracks(username: str, number: int):
 @app.route("/top/tracks/<username>/<int:number>/formatted")
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks_formatted(username: str, number: int) -> str:
+    number = _clamp_top_number(number)
     tracks = _get_top_tracks_payload(username, number)
     names = [track.get("track_name", "Unknown track") for track in tracks]
     return _format_ranked_lines(names)
@@ -782,26 +916,43 @@ def get_top_genre_artist(artist_name: str) -> str:
 
 
 def _collect_cover_candidates(username: str) -> List[Tuple[str, Optional[str]]]:
-    candidates: List[Tuple[str, Optional[str]]] = []
+    weighted_candidates: Dict[Tuple[str, Optional[str]], int] = {}
 
-    def add_candidate(release_mbid: Optional[str], caa_release_mbid: Optional[str]):
+    def add_candidate(
+        release_mbid: Optional[str],
+        caa_release_mbid: Optional[str],
+        listen_count: int,
+    ) -> None:
         if not release_mbid:
             return
-        pair = (release_mbid, caa_release_mbid or release_mbid)
-        if pair not in candidates:
-            candidates.append(pair)
+        key = (release_mbid, caa_release_mbid)
+        weight = max(listen_count, 1)
+        current = weighted_candidates.get(key, 0)
+        if weight > current:
+            weighted_candidates[key] = weight
 
     releases = _get_top_releases_payload(username, COVER_ART_LOOKUP_LIMIT)
     for release in releases:
-        add_candidate(release.get("caa_release_mbid"), release.get("caa_release_mbid"))
-        add_candidate(release.get("release_mbid"), release.get("caa_release_mbid"))
+        listen_count = _normalise_count(release.get("listen_count", 0))
+        add_candidate(release.get("caa_release_mbid"), release.get("caa_release_mbid"), listen_count)
+        add_candidate(release.get("release_mbid"), release.get("caa_release_mbid"), listen_count)
 
     recordings = _get_top_tracks_payload(username, COVER_ART_LOOKUP_LIMIT)
     for recording in recordings:
-        add_candidate(recording.get("caa_release_mbid"), recording.get("caa_release_mbid"))
-        add_candidate(recording.get("release_mbid"), recording.get("caa_release_mbid"))
+        listen_count = _normalise_count(recording.get("listen_count", 0))
+        add_candidate(recording.get("caa_release_mbid"), recording.get("caa_release_mbid"), listen_count)
+        add_candidate(recording.get("release_mbid"), recording.get("caa_release_mbid"), listen_count)
 
-    return candidates[:COVER_ART_LOOKUP_LIMIT]
+    if not weighted_candidates:
+        return []
+
+    sorted_candidates = sorted(
+        weighted_candidates.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    trimmed = [pair for pair, _ in sorted_candidates[:COVER_ART_LOOKUP_LIMIT]]
+    return trimmed
 
 
 @lru_cache(maxsize=256)
@@ -846,33 +997,51 @@ def _download_cover_art(release_mbid: str, caa_release_mbid: Optional[str]) -> O
 @app.route("/top/img/<username>")
 @rate_limit(IMAGE_RATE_LIMIT)
 def get_top_artist_img(username: str) -> Response:
+    queue_position = _enter_image_queue()
+    if queue_position is None:
+        abort(429, description="Image queue is full, try again in a moment.")
+    acquired = image_download_semaphore.acquire(timeout=IMAGE_QUEUE_TIMEOUT)
+    if not acquired:
+        _leave_image_queue()
+        abort(429, description="Image queue is busy, please retry shortly.")
     artist_candidates = _collect_artist_candidates(username)
 
-    for artist_name, artist_mbid in artist_candidates:
-        art = _download_lastfm_artist_image(artist_name, artist_mbid)
-        if art:
-            content_type, content = art
-            proxied = Response(content, content_type=content_type or "image/jpeg")
-            proxied.headers["Access-Control-Allow-Origin"] = "*"
-            return proxied
+    try:
+        response: Optional[Response] = None
+        for artist_name, artist_mbid in artist_candidates:
+            art = _download_lastfm_artist_image(artist_name, artist_mbid)
+            if art:
+                content_type, content = art
+                response = Response(content, content_type=content_type or "image/jpeg")
+                response.headers["Access-Control-Allow-Origin"] = "*"
+                break
 
-    for _, artist_mbid in artist_candidates:
-        if not artist_mbid:
-            continue
-        art = _download_artist_image(artist_mbid)
-        if art:
-            content_type, content = art
-            proxied = Response(content, content_type=content_type or "image/jpeg")
-            proxied.headers["Access-Control-Allow-Origin"] = "*"
-            return proxied
+        if response is None:
+            for _, artist_mbid in artist_candidates:
+                if not artist_mbid:
+                    continue
+                art = _download_artist_image(artist_mbid)
+                if art:
+                    content_type, content = art
+                    response = Response(content, content_type=content_type or "image/jpeg")
+                    response.headers["Access-Control-Allow-Origin"] = "*"
+                    break
 
-    for release_mbid, caa_release_mbid in _collect_cover_candidates(username):
-        art = _download_cover_art(release_mbid, caa_release_mbid)
-        if art:
-            content_type, content = art
-            proxied = Response(content, content_type=content_type or "image/jpeg")
-            proxied.headers["Access-Control-Allow-Origin"] = "*"
-            return proxied
+        if response is None:
+            for release_mbid, caa_release_mbid in _collect_cover_candidates(username):
+                art = _download_cover_art(release_mbid, caa_release_mbid)
+                if art:
+                    content_type, content = art
+                    response = Response(content, content_type=content_type or "image/jpeg")
+                    response.headers["Access-Control-Allow-Origin"] = "*"
+                    break
+    finally:
+        image_download_semaphore.release()
+        _leave_image_queue()
+
+    if response:
+        response.headers["X-Image-Queue-Position"] = str(max(queue_position - 1, 0))
+        return response
 
     abort(404, description="Artist image unavailable")
 

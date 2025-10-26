@@ -21,9 +21,14 @@ const SECTION_LABELS = {
   image: 'Artist image',
 };
 const SERVICE_LABELS = {
-  musicbrainz: 'MusicBrainz',
+  listenbrainz: 'ListenBrainz',
   navidrome: 'Navidrome',
 };
+const ARTWORK_STORAGE_KEY = 'wrappedArtworkData';
+const ARTWORK_TRANSFORM_KEY = 'wrappedArtworkTransform';
+const ARTWORK_TOKEN_KEY = 'wrappedArtworkToken';
+const ARTWORK_TOKEN_EXPIRY_KEY = 'wrappedArtworkTokenExpiry';
+const COUNTER_REFRESH_INTERVAL = 30000;
 
 function formatSectionListForStatus(sections) {
   if (!sections.length) {
@@ -70,6 +75,54 @@ function parseSectionSelection(raw) {
   return Array.from(selections);
 }
 
+let localArtworkStorageAvailable = true;
+try {
+  const testKey = '__wrapped_artwork_test__';
+  window.localStorage.setItem(testKey, '1');
+  window.localStorage.removeItem(testKey);
+} catch (error) {
+  console.warn('Local storage unavailable, will fall back to server for artwork.', error);
+  localArtworkStorageAvailable = false;
+}
+
+function readLocal(key) {
+  if (!localArtworkStorageAvailable) {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    console.warn('Local storage read failed; disabling local artwork cache.', error);
+    localArtworkStorageAvailable = false;
+    return null;
+  }
+}
+
+function writeLocal(key, value) {
+  if (!localArtworkStorageAvailable) {
+    return false;
+  }
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.warn('Local storage write failed; disabling local artwork cache.', error);
+    localArtworkStorageAvailable = false;
+    return false;
+  }
+}
+
+function removeLocal(key) {
+  if (!localArtworkStorageAvailable) {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch (error) {
+    console.warn('Local storage removal failed.', error);
+  }
+}
+
 const serviceInput = document.getElementById('service');
 const serviceDropdown = document.querySelector('[data-service-dropdown]');
 const serviceToggle = serviceDropdown ? serviceDropdown.querySelector('[data-dropdown-toggle]') : null;
@@ -78,11 +131,11 @@ const serviceOptions = serviceDropdown ? Array.from(serviceDropdown.querySelecto
 const serviceCurrentLabel = serviceDropdown ? serviceDropdown.querySelector('.service-select__current') : null;
 
 function getServiceLabel(key) {
-  return SERVICE_LABELS[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : 'MusicBrainz');
+  return SERVICE_LABELS[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : 'ListenBrainz');
 }
 
 function getSelectedService() {
-  return (serviceInput && serviceInput.value) || 'musicbrainz';
+  return (serviceInput && serviceInput.value) || 'listenbrainz';
 }
 
 function updateServiceSelection(value, labelText) {
@@ -155,7 +208,7 @@ function setupServiceDropdown() {
       ) {
         return;
       }
-      const value = option.dataset.value || 'musicbrainz';
+      const value = option.dataset.value || 'listenbrainz';
       const label = option.dataset.label || getServiceLabel(value);
       updateServiceSelection(value, label);
       closeServiceDropdown();
@@ -205,11 +258,28 @@ const topTracksEl = document.getElementById('top-tracks');
 const listenTimeEl = document.getElementById('listen-time');
 const topGenreEl = document.getElementById('top-genre');
 const artistImg = document.getElementById('artist-img');
+const artworkUploadInput = document.getElementById('artwork-upload');
+const artworkUploadBtn = document.getElementById('artwork-upload-btn');
+const artworkResetBtn = document.getElementById('artwork-reset-btn');
+const artworkEditor = document.querySelector('.artwork-editor');
+const artworkEditorControls = artworkEditor ? Array.from(artworkEditor.querySelectorAll('input[type="range"]')) : [];
+const artworkScaleInput = document.getElementById('artwork-scale');
+const artworkOffsetXInput = document.getElementById('artwork-offset-x');
+const artworkOffsetYInput = document.getElementById('artwork-offset-y');
+const wrappedCountEl = document.getElementById('wrapped-count');
+const wrappedCountSinceEl = document.getElementById('wrapped-count-since');
 
 const backgrounds = {};
 let coverObjectUrl = null;
 let generatedData = null;
 let isCoverReady = false;
+let customArtworkUrl = null;
+let customArtworkActive = false;
+let customArtworkPersistence = null;
+let customArtworkServerToken = null;
+let customArtworkServerExpiry = null;
+let imageTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+let queueMessageVisible = false;
 
 function getPalette(theme) {
   return THEME_COLORS[theme] || THEME_COLORS.black;
@@ -240,6 +310,31 @@ downloadBtn.addEventListener('click', () => {
   link.click();
 });
 
+if (artworkUploadBtn && artworkUploadInput) {
+  artworkUploadBtn.addEventListener('click', () => artworkUploadInput.click());
+  artworkUploadInput.addEventListener('change', handleArtworkUpload);
+}
+
+if (artworkResetBtn) {
+  artworkResetBtn.addEventListener('click', () => resetArtworkUpload());
+}
+
+if (artworkScaleInput) {
+  artworkScaleInput.addEventListener('input', handleArtworkTransformChange);
+}
+
+if (artworkOffsetXInput) {
+  artworkOffsetXInput.addEventListener('input', handleArtworkTransformChange);
+}
+
+if (artworkOffsetYInput) {
+  artworkOffsetYInput.addEventListener('input', handleArtworkTransformChange);
+}
+
+restoreImageTransform();
+restoreStoredArtwork();
+setArtworkEditorEnabled(customArtworkActive);
+
 window.addEventListener('load', () => {
   toggleDownload(false);
   const paint = () => window.requestAnimationFrame(drawCanvas);
@@ -247,6 +342,11 @@ window.addEventListener('load', () => {
     document.fonts.ready.then(paint).catch(paint);
   } else {
     paint();
+  }
+  refreshWrappedCount();
+  window.setInterval(refreshWrappedCount, COUNTER_REFRESH_INTERVAL);
+  if (customArtworkActive) {
+    applyCustomArtwork();
   }
 });
 
@@ -266,6 +366,19 @@ function setLoading(isLoading) {
       element.disabled = isLoading;
     }
   });
+  if (artworkUploadBtn) {
+    artworkUploadBtn.disabled = isLoading;
+  }
+  if (artworkResetBtn) {
+    if (isLoading) {
+      artworkResetBtn.disabled = true;
+      artworkResetBtn.setAttribute('aria-disabled', 'true');
+    } else if (customArtworkActive) {
+      toggleArtworkReset(true);
+    } else {
+      toggleArtworkReset(false);
+    }
+  }
 }
 
 function setStatus(message, type = 'info') {
@@ -277,6 +390,153 @@ function setStatus(message, type = 'info') {
   statusMessage.hidden = false;
   statusMessage.textContent = message;
   statusMessage.classList.toggle('error', type === 'error');
+}
+
+function handleArtworkTransformChange() {
+  if (!customArtworkActive) {
+    applyTransformToControls();
+    return;
+  }
+  const nextScale = artworkScaleInput ? Number(artworkScaleInput.value) : imageTransform.scale;
+  const nextOffsetX = artworkOffsetXInput ? Number(artworkOffsetXInput.value) : imageTransform.offsetX;
+  const nextOffsetY = artworkOffsetYInput ? Number(artworkOffsetYInput.value) : imageTransform.offsetY;
+  imageTransform = {
+    scale: Number.isFinite(nextScale) ? nextScale : 1,
+    offsetX: Number.isFinite(nextOffsetX) ? nextOffsetX : 0,
+    offsetY: Number.isFinite(nextOffsetY) ? nextOffsetY : 0,
+  };
+  saveImageTransform();
+  drawCanvas();
+}
+
+function applyTransformToControls() {
+  if (artworkScaleInput) {
+    artworkScaleInput.value = String(imageTransform.scale);
+  }
+  if (artworkOffsetXInput) {
+    artworkOffsetXInput.value = String(imageTransform.offsetX);
+  }
+  if (artworkOffsetYInput) {
+    artworkOffsetYInput.value = String(imageTransform.offsetY);
+  }
+}
+
+function saveImageTransform() {
+  if (!customArtworkActive) {
+    return;
+  }
+  writeLocal(ARTWORK_TRANSFORM_KEY, JSON.stringify(imageTransform));
+}
+
+function toggleArtworkReset(enabled) {
+  if (!artworkResetBtn) {
+    return;
+  }
+  artworkResetBtn.disabled = !enabled;
+  artworkResetBtn.setAttribute('aria-disabled', String(!enabled));
+}
+
+function setArtworkEditorEnabled(enabled) {
+  if (artworkEditor) {
+    artworkEditor.setAttribute('aria-disabled', String(!enabled));
+  }
+  artworkEditorControls.forEach((input) => {
+    input.disabled = !enabled;
+  });
+}
+
+async function applyCustomArtwork() {
+  if (!customArtworkActive || !customArtworkUrl) {
+    return false;
+  }
+  const loaded = await loadImage(artistImg, customArtworkUrl);
+  if (loaded) {
+    isCoverReady = true;
+    downloadError.hidden = true;
+    toggleDownload(true);
+    setArtworkEditorEnabled(true);
+    drawCanvas();
+    return true;
+  }
+  setStatus(customArtworkPersistence === 'server'
+    ? 'Server-stored artwork expired. Please upload a new image.'
+    : 'Could not load that image. Try a different file.', 'error');
+  resetArtworkUpload({ silent: true });
+  return false;
+}
+
+async function handleArtworkUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) {
+    return;
+  }
+  if (!file.type.startsWith('image/')) {
+    setStatus('Please select a valid image file.', 'error');
+    event.target.value = '';
+    return;
+  }
+  if (file.size > 6 * 1024 * 1024) {
+    setStatus('Image must be smaller than 6 MB.', 'error');
+    event.target.value = '';
+    return;
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    const stored = writeLocal(ARTWORK_STORAGE_KEY, dataUrl);
+    if (!stored) {
+      removeLocal(ARTWORK_STORAGE_KEY);
+      await uploadArtworkToServer(file);
+      return;
+    }
+    clearServerToken();
+    customArtworkUrl = dataUrl;
+    customArtworkActive = true;
+    customArtworkPersistence = 'local';
+    toggleArtworkReset(true);
+    setArtworkEditorEnabled(true);
+    setStatus('Custom artwork saved to your browser.');
+    await applyCustomArtwork();
+  } catch (error) {
+    console.warn('Local artwork save failed, falling back to server.', error);
+    try {
+      await uploadArtworkToServer(file);
+    } catch (uploadError) {
+      console.error(uploadError);
+      setStatus('Something went wrong while loading the artwork.', 'error');
+      resetArtworkUpload({ silent: true });
+    }
+  }
+}
+
+function resetArtworkUpload(options = {}) {
+  const { silent = false } = options;
+  if (customArtworkUrl && customArtworkUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(customArtworkUrl);
+  }
+  customArtworkUrl = null;
+  customArtworkActive = false;
+  customArtworkPersistence = null;
+  removeLocal(ARTWORK_STORAGE_KEY);
+  clearServerToken();
+  if (artworkUploadInput) {
+    artworkUploadInput.value = '';
+  }
+  toggleArtworkReset(false);
+  setArtworkEditorEnabled(false);
+  if (!silent) {
+    setStatus('Custom artwork cleared. The next generation will fetch Last.fm artwork again.');
+  }
+  if (generatedData && generatedData.username) {
+    loadCoverArt(generatedData.username).then((success) => {
+      isCoverReady = success;
+      downloadError.hidden = success;
+      toggleDownload(success);
+      drawCanvas();
+    });
+  } else {
+    isCoverReady = false;
+    toggleDownload(false);
+  }
 }
 
 async function generateWrapped(event) {
@@ -295,7 +555,7 @@ async function generateWrapped(event) {
   let sectionsToRefresh = [...ALL_SECTIONS];
 
   if (hasExisting) {
-    const existingLabel = `"${generatedData.username}" via ${getServiceLabel(generatedData.service || 'musicbrainz')}`;
+    const existingLabel = `"${generatedData.username}" via ${getServiceLabel(generatedData.service || 'listenbrainz')}`;
     const promptMessage = [
       sameProfile
         ? 'You already generated a wrapped for this selection.'
@@ -343,8 +603,13 @@ async function generateWrapped(event) {
   }
   if (refreshImage) {
     downloadError.hidden = true;
-    toggleDownload(false);
-    isCoverReady = false;
+    if (customArtworkActive && customArtworkUrl) {
+      isCoverReady = true;
+      toggleDownload(true);
+    } else {
+      toggleDownload(false);
+      isCoverReady = false;
+    }
   }
 
   try {
@@ -358,6 +623,9 @@ async function generateWrapped(event) {
 
     drawCanvas();
     resultsCard.hidden = false;
+    if (sectionsToRefresh.length === ALL_SECTIONS.length) {
+      await recordWrappedGenerated();
+    }
     const statusMessage = sectionsToRefresh.length === ALL_SECTIONS.length
       ? `Wrapped refreshed for ${username}.`
       : `Updated ${formatSectionListForStatus(sectionsToRefresh)}.`;
@@ -408,6 +676,14 @@ async function parseError(response) {
 }
 
 async function loadCoverArt(username) {
+  if (customArtworkActive && customArtworkUrl) {
+    if (coverObjectUrl) {
+      URL.revokeObjectURL(coverObjectUrl);
+      coverObjectUrl = null;
+    }
+    return applyCustomArtwork();
+  }
+  setArtworkEditorEnabled(false);
   if (coverObjectUrl) {
     URL.revokeObjectURL(coverObjectUrl);
     coverObjectUrl = null;
@@ -415,8 +691,19 @@ async function loadCoverArt(username) {
 
   try {
     const response = await fetch(withService(`/top/img/${encodeURIComponent(username)}`), { cache: 'no-store' });
+    if (response.status === 429) {
+      throw new Error(await parseError(response));
+    }
     if (!response.ok) {
       throw new Error('Artist image unavailable');
+    }
+    const queuePosition = Number(response.headers.get('X-Image-Queue-Position'));
+    if (Number.isFinite(queuePosition) && queuePosition > 0) {
+      setStatus(`Image queue is busy (position ${queuePosition}). Hang tight, we’ll grab the art asap.`);
+      queueMessageVisible = true;
+    } else if (queueMessageVisible) {
+      setStatus('');
+      queueMessageVisible = false;
     }
     const blob = await response.blob();
     coverObjectUrl = URL.createObjectURL(blob);
@@ -458,6 +745,37 @@ function loadImage(img, src) {
   });
 }
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadArtworkToServer(file) {
+  removeLocal(ARTWORK_STORAGE_KEY);
+  const formData = new FormData();
+  formData.append('artwork', file, file.name || 'artwork.png');
+  const response = await fetch('/artwork/upload', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+  const payload = await response.json();
+  customArtworkUrl = `/artwork/${payload.token}`;
+  customArtworkActive = true;
+  customArtworkPersistence = 'server';
+  persistServerToken(payload.token, payload.expires_in || 0);
+  toggleArtworkReset(true);
+  setArtworkEditorEnabled(true);
+  setStatus('Artwork stored server-side for up to 1 hour, then purged automatically.');
+  await applyCustomArtwork();
+}
+
 function populateResults(data) {
   topArtistsEl.textContent = formatRankedList(data.artists);
   topTracksEl.textContent = formatRankedList(data.tracks);
@@ -466,9 +784,29 @@ function populateResults(data) {
 }
 
 function formatRankedList(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return 'No data yet';
+  }
   return items
     .map((item, index) => `${index + 1}. ${item}`)
     .join('\n');
+}
+
+function sanitiseRankedArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item.trim();
+      }
+      if (item && typeof item === 'object') {
+        return (item.artist_name || item.track_name || item.name || '').trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
 }
 
 function normaliseGenreLabel(value) {
@@ -482,12 +820,142 @@ function normaliseGenreLabel(value) {
   return trimmed;
 }
 
+function ensureMinutesLabel(value) {
+  if (typeof value !== 'string') {
+    return '0';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '0';
+  }
+  return trimmed;
+}
+
+function restoreImageTransform() {
+  const raw = readLocal(ARTWORK_TRANSFORM_KEY);
+  if (!raw) {
+    applyTransformToControls();
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    imageTransform = {
+      scale: Number.isFinite(parsed.scale) ? parsed.scale : 1,
+      offsetX: Number.isFinite(parsed.offsetX) ? parsed.offsetX : 0,
+      offsetY: Number.isFinite(parsed.offsetY) ? parsed.offsetY : 0,
+    };
+  } catch (error) {
+    console.warn('Failed to parse stored artwork transform.', error);
+    imageTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+  }
+  applyTransformToControls();
+}
+
+function restoreStoredArtwork() {
+  const storedData = readLocal(ARTWORK_STORAGE_KEY);
+  if (storedData) {
+    customArtworkUrl = storedData;
+    customArtworkActive = true;
+    customArtworkPersistence = 'local';
+    toggleArtworkReset(true);
+    setArtworkEditorEnabled(true);
+    applyCustomArtwork();
+    return;
+  }
+  try {
+    const token = window.sessionStorage.getItem(ARTWORK_TOKEN_KEY);
+    const expiry = Number(window.sessionStorage.getItem(ARTWORK_TOKEN_EXPIRY_KEY));
+    if (token && Number.isFinite(expiry) && Date.now() < expiry) {
+      customArtworkServerToken = token;
+      customArtworkServerExpiry = expiry;
+      customArtworkUrl = `/artwork/${token}`;
+      customArtworkActive = true;
+      customArtworkPersistence = 'server';
+      toggleArtworkReset(true);
+      setArtworkEditorEnabled(true);
+      applyCustomArtwork();
+    }
+  } catch (error) {
+    console.warn('Session storage unavailable; cannot restore server artwork token.', error);
+  }
+}
+
+function persistServerToken(token, expiresInSeconds) {
+  customArtworkServerToken = token;
+  customArtworkServerExpiry = Date.now() + (Number(expiresInSeconds) || 0) * 1000;
+  try {
+    window.sessionStorage.setItem(ARTWORK_TOKEN_KEY, customArtworkServerToken);
+    window.sessionStorage.setItem(ARTWORK_TOKEN_EXPIRY_KEY, String(customArtworkServerExpiry));
+  } catch (error) {
+    console.warn('Session storage unavailable for server artwork token.', error);
+  }
+}
+
+function clearServerToken() {
+  customArtworkServerToken = null;
+  customArtworkServerExpiry = null;
+  try {
+    window.sessionStorage.removeItem(ARTWORK_TOKEN_KEY);
+    window.sessionStorage.removeItem(ARTWORK_TOKEN_EXPIRY_KEY);
+  } catch (error) {
+    console.warn('Unable to clear server artwork token from session storage.', error);
+  }
+}
+
+function updateWrappedCounter(count, since) {
+  if (!wrappedCountEl) {
+    return;
+  }
+  const parsed = Number(count);
+  if (!Number.isFinite(parsed)) {
+    return;
+  }
+  wrappedCountEl.textContent = parsed.toLocaleString();
+  if (wrappedCountSinceEl && since) {
+    let formatted = since;
+    const parsed = new Date(since);
+    if (!Number.isNaN(parsed.getTime())) {
+      formatted = parsed.toLocaleString(undefined, { month: 'short', year: 'numeric' });
+    }
+    wrappedCountSinceEl.textContent = formatted;
+  }
+}
+
+async function refreshWrappedCount() {
+  if (!wrappedCountEl) {
+    return;
+  }
+  try {
+    const response = await fetch('/metrics/wrapped', { cache: 'no-store' });
+    if (!response.ok) {
+      return;
+    }
+    const data = await response.json();
+    updateWrappedCounter(data.count, data.since);
+  } catch (error) {
+    console.warn('Unable to refresh wrapped counter', error);
+  }
+}
+
+async function recordWrappedGenerated() {
+  try {
+    const response = await fetch('/metrics/wrapped', { method: 'POST' });
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    const data = await response.json();
+    updateWrappedCounter(data.count, data.since);
+  } catch (error) {
+    console.error('Unable to record wrapped generation', error);
+  }
+}
+
 async function updateSections(username, sections) {
   const tasks = [];
 
   if (sections.includes('artists')) {
     tasks.push((async () => {
-      const artists = await fetchJson(`/top/artists/${encodeURIComponent(username)}/5`);
+      const artists = sanitiseRankedArray(await fetchJson(`/top/artists/${encodeURIComponent(username)}/5`));
       generatedData.artists = artists;
       topArtistsEl.textContent = formatRankedList(artists);
     })());
@@ -495,7 +963,7 @@ async function updateSections(username, sections) {
 
   if (sections.includes('tracks')) {
     tasks.push((async () => {
-      const tracks = await fetchJson(`/top/tracks/${encodeURIComponent(username)}/5`);
+      const tracks = sanitiseRankedArray(await fetchJson(`/top/tracks/${encodeURIComponent(username)}/5`));
       generatedData.tracks = tracks;
       topTracksEl.textContent = formatRankedList(tracks);
     })());
@@ -503,7 +971,7 @@ async function updateSections(username, sections) {
 
   if (sections.includes('time')) {
     tasks.push((async () => {
-      const minutes = await fetchText(`/time/total/${encodeURIComponent(username)}`);
+      const minutes = ensureMinutesLabel(await fetchText(`/time/total/${encodeURIComponent(username)}`));
       generatedData.minutes = minutes;
       listenTimeEl.textContent = minutes;
     })());
@@ -520,7 +988,11 @@ async function updateSections(username, sections) {
 
   if (sections.includes('image')) {
     tasks.push((async () => {
-      isCoverReady = await loadCoverArt(username);
+      if (customArtworkActive && customArtworkUrl) {
+        isCoverReady = await applyCustomArtwork();
+      } else {
+        isCoverReady = await loadCoverArt(username);
+      }
     })());
   }
 
@@ -533,7 +1005,7 @@ async function updateSections(username, sections) {
     topTracksEl.textContent = formatRankedList(generatedData.tracks);
   }
   if (!sections.includes('time') && typeof generatedData.minutes === 'string') {
-    listenTimeEl.textContent = generatedData.minutes;
+    listenTimeEl.textContent = ensureMinutesLabel(generatedData.minutes);
   }
   if (!sections.includes('genre') && typeof generatedData.genre === 'string') {
     topGenreEl.textContent = normaliseGenreLabel(generatedData.genre);
@@ -561,36 +1033,36 @@ function drawCanvas() {
     const destSize = 544;
     const imgWidth = artistImg.naturalWidth;
     const imgHeight = artistImg.naturalHeight;
+    const containScale = Math.min(destSize / imgWidth, destSize / imgHeight);
+    const allowTransform = customArtworkActive;
+    const userScale = allowTransform && Number.isFinite(imageTransform.scale) ? imageTransform.scale : 1;
+    const offsetX = allowTransform && Number.isFinite(imageTransform.offsetX) ? imageTransform.offsetX : 0;
+    const offsetY = allowTransform && Number.isFinite(imageTransform.offsetY) ? imageTransform.offsetY : 0;
 
-    let sourceX = 0;
-    let sourceY = 0;
-    let sourceWidth = imgWidth;
-    let sourceHeight = imgHeight;
+    const drawWidth = imgWidth * containScale * userScale;
+    const drawHeight = imgHeight * containScale * userScale;
+    const drawX = destX + (destSize - drawWidth) / 2 + offsetX;
+    const drawY = destY + (destSize - drawHeight) / 2 + offsetY;
 
-    if (imgWidth > 0 && imgHeight > 0) {
-      const imgAspect = imgWidth / imgHeight;
-      if (imgAspect > 1) {
-        sourceHeight = imgHeight;
-        sourceWidth = imgHeight;
-        sourceX = Math.floor((imgWidth - sourceWidth) / 2);
-      } else if (imgAspect < 1) {
-        sourceWidth = imgWidth;
-        sourceHeight = imgWidth;
-        sourceY = Math.floor((imgHeight - sourceHeight) / 2);
-      }
+    ctx.save();
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(destX, destY, destSize, destSize, 32);
+    } else {
+      ctx.rect(destX, destY, destSize, destSize);
     }
+    ctx.clip();
+    ctx.drawImage(artistImg, 0, 0, imgWidth, imgHeight, drawX, drawY, drawWidth, drawHeight);
+    ctx.restore();
 
-    ctx.drawImage(
-      artistImg,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-      destX,
-      destY,
-      destSize,
-      destSize,
-    );
+    ctx.save();
+    const frameGradient = ctx.createLinearGradient(destX, destY, destX, destY + destSize);
+    frameGradient.addColorStop(0, 'rgba(5, 8, 16, 0.55)');
+    frameGradient.addColorStop(1, 'rgba(5, 8, 16, 0.25)');
+    ctx.strokeStyle = frameGradient;
+    ctx.lineWidth = 10;
+    ctx.strokeRect(destX + 5, destY + 5, destSize - 10, destSize - 10);
+    ctx.restore();
   }
 
   const palette = getPalette(theme);
