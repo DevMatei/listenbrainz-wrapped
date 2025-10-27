@@ -97,9 +97,9 @@ See [CONTRIBUTING.yml](./CONTRIBUTING.yml) for setup steps, coding style notes, 
 
 ## 🧩 to-do
 
-* [x] navidrome support for self-hosters
+* [ ] navidrome support for self-hosters
 * [ ] faster wrapped rendering
-* [ ] make code modular and readable (maybe)
+* [x] make code modular and readable (maybe)
 
 originally made for last.fm by [jeff parla](https://github.com/parlajatwit) <3
 
