@@ -31,6 +31,7 @@ export const ARTWORK_STORAGE_KEY = 'wrappedArtworkData';
 export const ARTWORK_TRANSFORM_KEY = 'wrappedArtworkTransform';
 export const ARTWORK_TOKEN_KEY = 'wrappedArtworkToken';
 export const ARTWORK_TOKEN_EXPIRY_KEY = 'wrappedArtworkTokenExpiry';
+export const ARTWORK_SOURCE_KEY = 'wrappedArtworkSource';
 
 export const COUNTER_REFRESH_INTERVAL = 30000;
 export const MAX_ARTWORK_BYTES = 6 * 1024 * 1024;

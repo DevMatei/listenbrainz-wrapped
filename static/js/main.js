@@ -4,6 +4,7 @@ import {
   ARTWORK_TRANSFORM_KEY,
   ARTWORK_TOKEN_KEY,
   ARTWORK_TOKEN_EXPIRY_KEY,
+  ARTWORK_SOURCE_KEY,
   BACKGROUND_SOURCES,
   COUNTER_REFRESH_INTERVAL,
   MAX_ARTWORK_BYTES,
@@ -55,6 +56,7 @@ const artworkEditorControls = artworkEditor ? Array.from(artworkEditor.querySele
 const artworkScaleInput = document.getElementById('artwork-scale');
 const artworkOffsetXInput = document.getElementById('artwork-offset-x');
 const artworkOffsetYInput = document.getElementById('artwork-offset-y');
+const artworkSourceInputs = document.querySelectorAll('input[name="artwork-source"]');
 const wrappedCountEl = document.getElementById('wrapped-count');
 const wrappedCountSinceEl = document.getElementById('wrapped-count-since');
 
@@ -77,7 +79,14 @@ const state = {
   customArtworkServerExpiry: null,
   imageTransform: { scale: 1, offsetX: 0, offsetY: 0 },
   queueMessageVisible: false,
+  artworkSource: 'artist',
 };
+
+const storedArtworkSource = readLocal(ARTWORK_SOURCE_KEY);
+if (storedArtworkSource === 'artist' || storedArtworkSource === 'release') {
+  state.artworkSource = storedArtworkSource;
+}
+updateArtworkSourceControls(state.artworkSource);
 
 artistImg.crossOrigin = 'anonymous';
 
@@ -113,6 +122,15 @@ if (artworkOffsetXInput) {
 if (artworkOffsetYInput) {
   artworkOffsetYInput.addEventListener('input', handleArtworkTransformChange);
 }
+
+artworkSourceInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    if (!input.checked) {
+      return;
+    }
+    setArtworkSource(input.value);
+  });
+});
 
 restoreImageTransform();
 restoreStoredArtwork();
@@ -182,6 +200,53 @@ function setStatus(message, type = 'info') {
   statusMessage.hidden = false;
   statusMessage.textContent = message;
   statusMessage.classList.toggle('error', type === 'error');
+}
+
+function updateArtworkSourceControls(value) {
+  artworkSourceInputs.forEach((input) => {
+    input.checked = input.value === value;
+  });
+}
+
+function setArtworkSource(value, { persist = true, refresh = true } = {}) {
+  const next = value === 'release' ? 'release' : 'artist';
+  const changed = state.artworkSource !== next;
+  state.artworkSource = next;
+  if (persist) {
+    writeLocal(ARTWORK_SOURCE_KEY, next);
+  }
+  updateArtworkSourceControls(next);
+
+  if (!refresh) {
+    return;
+  }
+  if (state.customArtworkActive) {
+    return;
+  }
+  if (!state.generatedData || !state.generatedData.username) {
+    return;
+  }
+  if (!changed && state.isCoverReady) {
+    return;
+  }
+
+  const username = state.generatedData.username;
+  state.isCoverReady = false;
+  toggleDownload(false);
+  loadCoverArt(username)
+    .then((ready) => {
+      state.isCoverReady = ready;
+      drawCanvas();
+      downloadError.hidden = ready;
+      toggleDownload(ready);
+    })
+    .catch((error) => {
+      console.error('Unable to refresh artwork source', error);
+      setStatus('Unable to refresh artwork for the selected source.', 'error');
+      state.isCoverReady = false;
+      downloadError.hidden = false;
+      toggleDownload(false);
+    });
 }
 
 function handleArtworkTransformChange() {
@@ -615,7 +680,12 @@ async function loadCoverArt(username) {
   }
 
   try {
-    const response = await fetch(serviceSelector.withService(`/top/img/${encodeURIComponent(username)}`), { cache: 'no-store' });
+    const imageParams = new URLSearchParams();
+    if (state.artworkSource === 'release') {
+      imageParams.set('source', 'release');
+    }
+    const imagePath = `/top/img/${encodeURIComponent(username)}${imageParams.toString() ? `?${imageParams.toString()}` : ''}`;
+    const response = await fetch(serviceSelector.withService(imagePath), { cache: 'no-store' });
     if (response.status === 429) {
       throw new Error(await parseError(response));
     }

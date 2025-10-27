@@ -316,7 +316,7 @@ def _download_cover_art(release_mbid: str, caa_release_mbid: Optional[str]) -> O
     return None
 
 
-def fetch_top_artist_image(username: str) -> ImageResult:
+def fetch_top_artist_image(username: str, *, preferred_source: str = "artist") -> ImageResult:
     queue_position = _enter_image_queue()
     if queue_position is None:
         raise ImageQueueFullError
@@ -326,26 +326,37 @@ def fetch_top_artist_image(username: str) -> ImageResult:
         raise ImageQueueBusyError
 
     try:
-        artist_candidates = _collect_artist_candidates(username)
-        for artist_name, artist_mbid in artist_candidates:
-            art = _download_lastfm_artist_image(artist_name, artist_mbid)
-            if art:
-                content_type, content = art
-                return ImageResult(content_type or "image/jpeg", content, max(queue_position - 1, 0))
+        preference_order = []
+        if preferred_source == "release":
+            preference_order = ["release", "artist"]
+        else:
+            preference_order = ["artist", "release"]
 
-        for _, artist_mbid in artist_candidates:
-            if not artist_mbid:
-                continue
-            art = _download_artist_image(artist_mbid)
-            if art:
-                content_type, content = art
-                return ImageResult(content_type or "image/jpeg", content, max(queue_position - 1, 0))
+        artist_candidates: List[Tuple[str, Optional[str]]] = []
 
-        for release_mbid, caa_release_mbid in _collect_cover_candidates(username):
-            art = _download_cover_art(release_mbid, caa_release_mbid)
-            if art:
-                content_type, content = art
-                return ImageResult(content_type or "image/jpeg", content, max(queue_position - 1, 0))
+        for source in preference_order:
+            if source == "release":
+                for release_mbid, caa_release_mbid in _collect_cover_candidates(username):
+                    art = _download_cover_art(release_mbid, caa_release_mbid)
+                    if art:
+                        content_type, content = art
+                        return ImageResult(content_type or "image/jpeg", content, max(queue_position - 1, 0))
+            else:
+                if not artist_candidates:
+                    artist_candidates = _collect_artist_candidates(username)
+                for artist_name, artist_mbid in artist_candidates:
+                    art = _download_lastfm_artist_image(artist_name, artist_mbid)
+                    if art:
+                        content_type, content = art
+                        return ImageResult(content_type or "image/jpeg", content, max(queue_position - 1, 0))
+
+                for _, artist_mbid in artist_candidates:
+                    if not artist_mbid:
+                        continue
+                    art = _download_artist_image(artist_mbid)
+                    if art:
+                        content_type, content = art
+                        return ImageResult(content_type or "image/jpeg", content, max(queue_position - 1, 0))
     finally:
         image_download_semaphore.release()
         _leave_image_queue()

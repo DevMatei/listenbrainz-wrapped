@@ -159,8 +159,11 @@ def get_top_genre_artist(artist_name: str) -> str:
 @bp.route("/top/img/<username>")
 @rate_limit(IMAGE_RATE_LIMIT)
 def get_top_artist_img(username: str) -> Response:
+    source = request.args.get("source", "artist").strip().lower() or "artist"
+    if source not in {"artist", "release"}:
+        source = "artist"
     try:
-        image_result = fetch_top_artist_image(username)
+        image_result = fetch_top_artist_image(username, preferred_source=source)
     except ImageQueueFullError:
         abort(429, description="Image queue is full, try again in a moment.")
     except ImageQueueBusyError:

@@ -160,6 +160,19 @@
             <p class="artwork-controls__hint">
               Override the Last.fm artwork if it looks wrong or you just prefer a different image. We keep it in local storage; if that fails we temporarily store it for 1 hour and then delete it automatically.
             </p>
+            <div class="artwork-source" role="group" aria-labelledby="artwork-source-label">
+              <span id="artwork-source-label" class="artwork-source__label">Artwork source</span>
+              <div class="artwork-source__options">
+                <label class="artwork-source__option">
+                  <input type="radio" name="artwork-source" value="artist" checked>
+                  <span>Artist image (Last.fm)</span>
+                </label>
+                <label class="artwork-source__option">
+                  <input type="radio" name="artwork-source" value="release">
+                  <span>Top release cover (ListenBrainz)</span>
+                </label>
+              </div>
+            </div>
             <div class="artwork-editor" aria-disabled="true">
               <div class="artwork-editor__control">
                 <label for="artwork-scale">Zoom</label>

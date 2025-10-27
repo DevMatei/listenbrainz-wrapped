@@ -285,6 +285,41 @@ select {
   gap: 0.65rem;
 }
 
+.artwork-source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 209, 0.18);
+  background: rgba(8, 13, 24, 0.45);
+}
+
+.artwork-source__label {
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.artwork-source__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.artwork-source__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.artwork-source__option input[type="radio"] {
+  accent-color: var(--accent);
+}
+
 .artwork-controls__buttons {
   display: flex;
   flex-wrap: wrap;
