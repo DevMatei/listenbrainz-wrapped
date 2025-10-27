@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff6ad5"/>
+      <stop offset="50%" stop-color="#845ef7"/>
+      <stop offset="100%" stop-color="#0b7285"/>
+    </linearGradient>
+
+    <!-- Accent for vinyl center -->
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffe066"/>
+      <stop offset="100%" stop-color="#fff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Card background -->
+  <rect width="64" height="64" rx="12" fill="url(#gradient)"/>
+
+  <!-- Vinyl record -->
+  <circle cx="32" cy="32" r="14" fill="#111" opacity="0.9"/>
+  <circle cx="32" cy="32" r="11" fill="#1c1c1c"/>
+  <circle cx="32" cy="32" r="2" fill="url(#accent)"/>
+
+  <!-- Rings -->
+  <g opacity="0.25" stroke="#fff" stroke-width="0.6" fill="none">
+    <circle cx="32" cy="32" r="6"/>
+    <circle cx="32" cy="32" r="9"/>
+    <circle cx="32" cy="32" r="12"/>
+  </g>
+</svg>
+<!-- yes i made ts with chatgpt i cba to do it by myself sorry -->
