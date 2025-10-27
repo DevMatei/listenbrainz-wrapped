@@ -15,6 +15,7 @@ https://wrapped.devmatei.com/
 * artist art uses last.fm first, then falls back to musicbrainz/wikidata — and if that fails, there’s a built-in editor so you can upload/zoom/position your own artwork (saved in local storage or temporarily on the server for 1 hour)
 * image requests flow through a tiny queue + rate limiter so your homelab doesn’t melt when friends hammer the endpoint after you share it
 * there’s a live counter of total wraps ever generated, persisted via a tiny text file so the tally survives restarts
+* officially listed on the [ListenBrainz Enabled Applications](https://wiki.musicbrainz.org/ListenBrainz_Enabled_Applications) page :D
 
 ## ⚡ quickstart
 
@@ -96,12 +97,11 @@ See [CONTRIBUTING.yml](./CONTRIBUTING.yml) for setup steps, coding style notes, 
 
 ## 🧩 to-do
 
-* [ ] navidrome support for self-hosters
+* [x] navidrome support for self-hosters
 * [ ] faster wrapped rendering
 * [ ] make code modular and readable (maybe)
 
 originally made for last.fm by [jeff parla](https://github.com/parlajatwit) <3
-my code is unreadable but it works 😭
 
 ## 📜 license
 
