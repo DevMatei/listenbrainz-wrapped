@@ -22,5 +22,5 @@ def create_app() -> Flask:
     @app.errorhandler(404)
     def page_not_found(e):
         return app.send_static_file('404.html'), 404
-
+    
     return app
