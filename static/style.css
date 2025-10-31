@@ -529,6 +529,107 @@ canvas {
   font-variant-numeric: tabular-nums;
 }
 
+.body--not-found {
+  align-items: center;
+}
+
+.page--not-found {
+  width: min(860px, 100%);
+}
+
+.not-found__body {
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  align-items: center;
+}
+
+.not-found__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.not-found__code {
+  font-size: clamp(4rem, 8vw, 6.5rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  background: linear-gradient(135deg, var(--accent) 0%, #38bdf8 80%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.not-found__lead {
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  max-width: 28rem;
+}
+
+.error-message {
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.not-found__action {
+  align-self: flex-start;
+}
+
+.not-found__art {
+  display: flex;
+  justify-content: center;
+}
+
+.vinyl {
+  width: clamp(200px, 35vw, 260px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  position: relative;
+  background: radial-gradient(48% 48% at 50% 50%, rgba(15, 23, 42, 0.75) 0%, rgba(10, 14, 24, 0.95) 45%, #020617 90%);
+  border: 1px solid rgba(148, 163, 209, 0.25);
+  box-shadow: 0 25px 55px rgba(4, 7, 14, 0.45);
+  overflow: hidden;
+}
+
+.vinyl::before {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 209, 0.18);
+  opacity: 0.8;
+}
+
+.vinyl::after {
+  content: '';
+  position: absolute;
+  inset: 38%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35);
+}
+
+@media (max-width: 900px) {
+  .not-found__body {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .not-found__content {
+    align-items: center;
+  }
+
+  .not-found__action {
+    align-self: center;
+  }
+
+  .not-found__lead {
+    max-width: 32rem;
+  }
+}
+
 @media (max-width: 768px) {
   body {
     padding: 2rem 1rem 3rem;

@@ -12,10 +12,10 @@ https://wrapped.devmatei.com/
 ## 💡 why it’s cool
 
 * grabs data from listenbrainz, musicbrainz, cover art archive and wikidata — all public, no tokens (unlesssssssss u want last.fm)
-* artist art uses last.fm first, then falls back to musicbrainz/wikidata — and if that fails, there’s a built-in editor so you can upload/zoom/position your own artwork (saved in local storage or temporarily on the server for 1 hour)
-* image requests flow through a tiny queue + rate limiter so your homelab doesn’t melt when friends hammer the endpoint after you share it
-* there’s a live counter of total wraps ever generated, persisted via a tiny text file so the tally survives restarts
-* officially listed on the [ListenBrainz Enabled Applications](https://wiki.musicbrainz.org/ListenBrainz_Enabled_Applications) page :D
+* artist art uses last.fm first, then falls back to musicbrainz/wikidata — and if that fails/you preffer another image, there’s a built-in editor so you can upload/zoom/position your own artwork (saved in local storage or temporarily on the server for 1 hour)
+* there are rate limits implimented so your server dosent get ddosed (i use cloudflare anyway) 
+* there’s a live counter of total wraps ever generated (don`t ask why it seemed cool tbh)
+* officially listed on the [ListenBrainz Enabled Applications](https://wiki.musicbrainz.org/ListenBrainz_Enabled_Applications) page :D 
 
 ## ⚡ quickstart
 
@@ -79,9 +79,9 @@ or locally
 
 ### why it exists
 
-Yeah, the idea is for people whose friends all use Spotify and post their Wrapped. When you share a ListenBrainz one everyone replies “wait, what’s that?”—so this bridges the gap. I swapped Spotify for Navidrome but still wanted that wrapped-moment vibe.
+Yeah, the idea is for people whose friends all use Spotify and post their Wrapped. When you share a ListenBrainz one everyone replies “wait, what’s that?”—so this bridges the gap. I swapped Spotify for Navidrome but still wanted that wrapped-moment vibe, its a bit of a niche problem to have.
 
-Share [wrapped.devmatei.com](https://wrapped.devmatei.com), flex your open music stats, and maybe convince someone to try self-hosting—or at least start a nerdy chat.
+Share [wrapped.devmatei.com](https://wrapped.devmatei.com), flex your open music stats, and be the coolest person in the room!
 
 ### about me
 
@@ -97,7 +97,7 @@ See [CONTRIBUTING.yml](./CONTRIBUTING.yml) for setup steps, coding style notes, 
 
 ## 🧩 to-do
 
-* [ ] navidrome support for self-hosters
+* [ ] try to set some more security features and maybe add last.fm support?
 * [x] faster wrapped rendering - im limited by the api speeds so cant go under 33s ish
 * [x] make code modular and readable (maybe)
 
