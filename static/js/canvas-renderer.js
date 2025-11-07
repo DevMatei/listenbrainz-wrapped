@@ -1,5 +1,5 @@
 import { BACKGROUND_SOURCES, THEME_COLORS } from './constants.js';
-import { normaliseGenreLabel, truncateForCanvas } from './utils.js';
+import { normaliseGenreLabel } from './utils.js';
 
 function getPalette(theme) {
   return THEME_COLORS[theme] || THEME_COLORS.black;
@@ -8,6 +8,12 @@ function getPalette(theme) {
 export function createCanvasRenderer({ canvas, themeSelect, artistImg }) {
   const ctx = canvas.getContext('2d');
   const backgrounds = {};
+  const leftColumnX = 112;
+  const rightColumnX = 590;
+  const columnGap = 24;
+  const rightPadding = 112;
+  const leftColumnWidth = Math.max(0, rightColumnX - leftColumnX - columnGap);
+  const rightColumnWidth = Math.max(0, canvas.width - rightColumnX - rightPadding);
 
   function preloadBackgrounds(callback) {
     Object.entries(BACKGROUND_SOURCES).forEach(([key, src]) => {
@@ -22,14 +28,74 @@ export function createCanvasRenderer({ canvas, themeSelect, artistImg }) {
     });
   }
 
-  function drawList(items, x, startY, color) {
+  function ellipsizeText(text, maxWidth) {
+    const value = typeof text === 'string' ? text : '';
+    if (!maxWidth || maxWidth <= 0) {
+      return value;
+    }
+    if (ctx.measureText(value).width <= maxWidth) {
+      return value;
+    }
+    const ellipsis = '…';
+    let end = value.length;
+    while (end > 0) {
+      const candidate = `${value.slice(0, end).trimEnd()}${ellipsis}`;
+      if (!candidate || ctx.measureText(candidate).width <= maxWidth) {
+        return candidate || ellipsis;
+      }
+      end -= 1;
+    }
+    return ellipsis;
+  }
+
+  function formatListEntry(item, index, maxWidth) {
+    const prefix = `${index + 1}. `;
+    const value = typeof item === 'string' ? item : '';
+    if (!maxWidth || maxWidth <= 0) {
+      return `${prefix}${value}`;
+    }
+    const prefixWidth = ctx.measureText(prefix).width;
+    const availableWidth = Math.max(0, maxWidth - prefixWidth);
+    const truncated = ellipsizeText(value, availableWidth);
+    return `${prefix}${truncated}`;
+  }
+
+  function drawList(items, x, startY, color, maxWidth) {
     const lineHeight = 72;
     ctx.fillStyle = color;
     const list = Array.isArray(items) ? items : [];
     list.forEach((item, index) => {
-      const label = `${index + 1}. ${truncateForCanvas(item, 24)}`;
+      const label = formatListEntry(item, index, maxWidth);
       ctx.fillText(label, x, startY + index * lineHeight);
     });
+  }
+
+  function fitTextWithFont(text, {
+    fontWeight = '700',
+    fontSize = 68,
+    fontFamily = 'Nunito',
+    maxWidth,
+    minFontSize = 40,
+    ellipsize = true,
+  } = {}) {
+    let size = fontSize;
+    let value = typeof text === 'string' ? text : '';
+    ctx.save();
+    ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+    if (maxWidth && maxWidth > 0) {
+      while (size > minFontSize && ctx.measureText(value).width > maxWidth) {
+        size -= 2;
+        ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+      }
+      if (ctx.measureText(value).width > maxWidth && ellipsize) {
+        value = ellipsizeText(value, maxWidth);
+      }
+    }
+    ctx.restore();
+    return {
+      text: value,
+      font: `${fontWeight} ${size}px ${fontFamily}`,
+    };
   }
 
   function draw({ data, isCoverReady, customArtworkActive, imageTransform }) {
@@ -100,26 +166,38 @@ export function createCanvasRenderer({ canvas, themeSelect, artistImg }) {
     ctx.textBaseline = 'top';
 
     ctx.font = '400 40px Nunito';
-    ctx.fillText('Top Artists', 112, listHeadingY);
-    ctx.fillText('Top Tracks', 590, listHeadingY);
+    ctx.fillText('Top Artists', leftColumnX, listHeadingY);
+    ctx.fillText('Top Tracks', rightColumnX, listHeadingY);
 
     const artistList = Array.isArray(data.artists) ? data.artists : [];
     const trackList = Array.isArray(data.tracks) ? data.tracks : [];
     ctx.font = '700 40px Nunito';
-    drawList(artistList, 112, listStartY, palette.value);
-    drawList(trackList, 590, listStartY, palette.value);
+    drawList(artistList, leftColumnX, listStartY, palette.value, leftColumnWidth);
+    drawList(trackList, rightColumnX, listStartY, palette.value, rightColumnWidth);
 
     ctx.font = '400 40px Nunito';
     ctx.fillStyle = palette.label;
-    ctx.fillText('Minutes Listened', 112, summaryLabelY);
-    ctx.fillText('Top Genre', 590, summaryLabelY);
+    ctx.fillText('Minutes Listened', leftColumnX, summaryLabelY);
+    ctx.fillText('Top Genre', rightColumnX, summaryLabelY);
 
     ctx.font = '700 68px Nunito';
     ctx.fillStyle = palette.value;
     const minutesLabel = typeof data.minutes === 'string' ? data.minutes : '0';
-    const genreLabel = truncateForCanvas(normaliseGenreLabel(data.genre), 20);
-    ctx.fillText(minutesLabel, 112, summaryValueY);
-    ctx.fillText(genreLabel, 590, summaryValueY);
+    const minutesLayout = fitTextWithFont(minutesLabel, {
+      maxWidth: leftColumnWidth,
+      minFontSize: 44,
+      ellipsize: true,
+    });
+    ctx.font = minutesLayout.font;
+    ctx.fillText(minutesLayout.text, leftColumnX, summaryValueY);
+
+    const genreLabel = normaliseGenreLabel(data.genre);
+    const genreLayout = fitTextWithFont(genreLabel, {
+      maxWidth: rightColumnWidth,
+      ellipsize: true,
+    });
+    ctx.font = genreLayout.font;
+    ctx.fillText(genreLayout.text, rightColumnX, summaryValueY);
   }
 
   return {

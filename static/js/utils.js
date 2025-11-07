@@ -93,13 +93,6 @@ export function ensureMinutesLabel(value) {
   return trimmed;
 }
 
-export function truncateForCanvas(text, maxLength) {
-  if (text.length <= maxLength) {
-    return text;
-  }
-  return `${text.substring(0, maxLength - 1)}...`;
-}
-
 export function loadImage(img, src) {
   return new Promise((resolve) => {
     const cleanup = () => {
