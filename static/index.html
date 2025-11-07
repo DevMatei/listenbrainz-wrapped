@@ -179,10 +179,17 @@
             <div class="support-banner__ad" aria-live="polite">
               <div id="container-7aa51c6a07bc22c8f745bad7b838de01"></div>
             </div>
+            <p id="support-banner-fallback" class="support-banner__fallback" hidden>
+              The ad network refused to load (likely your region, VPN, or an aggressive blocker). Totally fine — if you’d still like to support hosting, consider whitelisting wrapped.devmatei.com or sharing the site.
+            </p>
             <script
+              id="support-ad-script"
               async="async"
               data-cfasync="false"
               src="https://pl28007060.effectivegatecpm.com/7aa51c6a07bc22c8f745bad7b838de01/invoke.js"
+              referrerpolicy="no-referrer"
+              crossorigin="anonymous"
+              onerror="document.getElementById('support-banner-fallback').hidden = false;"
             ></script>
           </section>
           <div class="artwork-controls">

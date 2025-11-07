@@ -211,6 +211,12 @@ p {
   overflow: hidden;
 }
 
+.support-banner__fallback {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 input[type="text"] {
   flex: 1 1 220px;
   padding: 0.85rem 1rem;
