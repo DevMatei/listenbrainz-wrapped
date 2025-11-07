@@ -66,6 +66,10 @@ TURNSTILE_TIMEOUT=5       # optional verification timeout (seconds)
 
 When both keys are present the frontend automatically renders the Turnstile widget, waits for a token, and attaches it to every stats/image/upload request. The backend validates tokens (with short-lived caching) before touching ListenBrainz/MusicBrainz or storing artwork, so bots get blocked but legit users only see a lightweight checkbox.
 
+## 🙈 sorry about the ads
+
+I know ads suck—I run AdGuard Home on my homelab because I hate them too. But hosting this project (mostly energy prices to keep my homelab on 24/7) costs money, and I’m just a teen trying to keep this "ListenBrainz Wrapped" online for everyone. The single native banner on the site helps cover those bills so you can keep generating posters for free. Thanks for understanding!
+
 ## ⚙️ config
 
 ### core
