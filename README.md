@@ -53,6 +53,19 @@ or locally
 * 1 worker per instance unless you know what you’re doing
 * add `FLASK_DEBUG=0`, `PYTHONUNBUFFERED=1`, `LOG_LEVEL=info`
 
+## 🛡️ Cloudflare Turnstile
+
+Put a human verification step in front of the expensive ListenBrainz calls without any extra middleware:
+
+```
+TURNSTILE_SITE_KEY=pk_live_xxx
+TURNSTILE_SECRET_KEY=sk_live_xxx
+TURNSTILE_CACHE_TTL=120   # optional server-side cache window (seconds)
+TURNSTILE_TIMEOUT=5       # optional verification timeout (seconds)
+```
+
+When both keys are present the frontend automatically renders the Turnstile widget, waits for a token, and attaches it to every stats/image/upload request. The backend validates tokens (with short-lived caching) before touching ListenBrainz/MusicBrainz or storing artwork, so bots get blocked but legit users only see a lightweight checkbox.
+
 ## ⚙️ config
 
 ### core

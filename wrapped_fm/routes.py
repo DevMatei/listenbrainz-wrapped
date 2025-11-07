@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 
 from flask import (
     Blueprint,
@@ -19,6 +20,8 @@ from .config import (
     STATS_RATE_LIMIT,
     TEMP_ARTWORK_MAX_BYTES,
     TEMP_ARTWORK_TTL_SECONDS,
+    TURNSTILE_ENABLED,
+    TURNSTILE_SITE_KEY,
     WRAPPED_COUNT_SINCE,
 )
 from .genres import get_genre_for_artist, get_top_genre
@@ -39,6 +42,7 @@ from .listenbrainz import (
 from .metrics import increment_wrapped_count, read_wrapped_count
 from .rate_limiter import rate_limit
 from .temp_artwork import ArtworkExpiredError, ArtworkMissingError, fetch_artwork, store_artwork
+from .turnstile import require_turnstile
 
 bp = Blueprint("wrapped_routes", __name__)
 
@@ -46,6 +50,37 @@ bp = Blueprint("wrapped_routes", __name__)
 @bp.route("/")
 def root() -> Response:
     return current_app.send_static_file("index.html")
+
+
+def _client_config_payload() -> dict:
+    return {
+        "turnstileEnabled": bool(TURNSTILE_ENABLED),
+        "turnstileSiteKey": TURNSTILE_SITE_KEY or "",
+    }
+
+
+@bp.route("/api/client-config", methods=["GET"])
+def client_config_api() -> Response:
+    payload = _client_config_payload()
+    response = jsonify(payload)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@bp.route("/client-config.js", methods=["GET"])
+def client_config_module() -> Response:
+    """Legacy module export for cached browsers."""
+    payload = _client_config_payload()
+    content = "\n".join(
+        [
+            "// Runtime config",
+            f"export const TURNSTILE_ENABLED = {json.dumps(payload['turnstileEnabled'])};",
+            f"export const TURNSTILE_SITE_KEY = {json.dumps(payload['turnstileSiteKey'])};",
+        ]
+    )
+    response = current_app.response_class(f"{content}\n", mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.route("/metrics/wrapped", methods=["GET"])
@@ -60,6 +95,7 @@ def increment_wrapped_metric() -> Response:
 
 
 @bp.route("/artwork/upload", methods=["POST"])
+@require_turnstile
 @rate_limit(IMAGE_RATE_LIMIT)
 def upload_custom_artwork() -> Response:
     uploaded_file = request.files.get("artwork")
@@ -96,6 +132,7 @@ def fetch_custom_artwork(token: str) -> Response:
 
 
 @bp.route("/top/albums/<username>/<int:number>")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_albums(username: str, number: int) -> str:
     number = clamp_top_number(number)
@@ -105,6 +142,7 @@ def get_top_albums(username: str, number: int) -> str:
 
 
 @bp.route("/top/artists/<username>/<int:number>")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_artists(username: str, number: int):
     number = clamp_top_number(number)
@@ -113,6 +151,7 @@ def get_top_artists(username: str, number: int):
 
 
 @bp.route("/top/artists/<username>/<int:number>/formatted")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_artists_formatted(username: str, number: int) -> str:
     number = clamp_top_number(number)
@@ -122,6 +161,7 @@ def get_top_artists_formatted(username: str, number: int) -> str:
 
 
 @bp.route("/top/tracks/<username>/<int:number>")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks(username: str, number: int):
     number = clamp_top_number(number)
@@ -130,6 +170,7 @@ def get_top_tracks(username: str, number: int):
 
 
 @bp.route("/top/tracks/<username>/<int:number>/formatted")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks_formatted(username: str, number: int) -> str:
     number = clamp_top_number(number)
@@ -139,24 +180,28 @@ def get_top_tracks_formatted(username: str, number: int) -> str:
 
 
 @bp.route("/time/total/<username>")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_listen_time(username: str) -> str:
     return estimate_total_listen_minutes(username)
 
 
 @bp.route("/top/genre/user/<username>")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_genre_user(username: str) -> str:
     return get_top_genre(username)
 
 
 @bp.route("/top/genre/artist/<artist_name>")
+@require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_genre_artist(artist_name: str) -> str:
     return get_genre_for_artist(artist_name)
 
 
 @bp.route("/top/img/<username>")
+@require_turnstile
 @rate_limit(IMAGE_RATE_LIMIT)
 def get_top_artist_img(username: str) -> Response:
     source = request.args.get("source", "artist").strip().lower() or "artist"

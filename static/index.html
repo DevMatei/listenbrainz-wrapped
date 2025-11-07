@@ -37,6 +37,7 @@
       }
     </script>
     <link rel="stylesheet" href="style.css">
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
     <script type="module" src="js/main.js"></script>
   </head>
   <body>
@@ -64,6 +65,22 @@
               <button id="submit" type="submit" class="btn">Generate</button>
             </div>
             <p id="status-message" class="status-message" role="status" aria-live="polite" hidden></p>
+            <div id="turnstile-wrapper" class="form__turnstile" hidden>
+              <label class="form__label" id="turnstile-label">Verification</label>
+              <div
+                id="turnstile-container"
+                class="turnstile-container"
+                role="group"
+                aria-labelledby="turnstile-label"
+              ></div>
+              <p
+                id="turnstile-status"
+                class="turnstile-status"
+                role="status"
+                aria-live="polite"
+                hidden
+              ></p>
+            </div>
           </form>
           <div class="form__secondary-grid">
             <div class="form__secondary">

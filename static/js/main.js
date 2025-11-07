@@ -38,6 +38,9 @@ const canvas = document.getElementById('canvas');
 const themeSelect = document.getElementById('color');
 const form = document.getElementById('wrapped-form');
 const usernameField = document.getElementById('username');
+const turnstileWrapper = document.getElementById('turnstile-wrapper');
+const turnstileContainer = document.getElementById('turnstile-container');
+const turnstileStatusEl = document.getElementById('turnstile-status');
 const downloadBtn = document.getElementById('download');
 const loadingIndicator = document.getElementById('loading');
 const statusMessage = document.getElementById('status-message');
@@ -59,6 +62,12 @@ const artworkOffsetYInput = document.getElementById('artwork-offset-y');
 const artworkSourceInputs = document.querySelectorAll('input[name="artwork-source"]');
 const wrappedCountEl = document.getElementById('wrapped-count');
 const wrappedCountSinceEl = document.getElementById('wrapped-count-since');
+let turnstileWidgetId = null;
+const clientConfig = {
+  turnstileEnabled: false,
+  turnstileSiteKey: '',
+};
+let clientConfigPromise = null;
 
 const canvasRenderer = createCanvasRenderer({ canvas, themeSelect, artistImg });
 
@@ -80,7 +89,12 @@ const state = {
   imageTransform: { scale: 1, offsetX: 0, offsetY: 0 },
   queueMessageVisible: false,
   artworkSource: 'artist',
+  turnstileToken: null,
 };
+
+function isTurnstileEnabled() {
+  return Boolean(clientConfig.turnstileEnabled && clientConfig.turnstileSiteKey);
+}
 
 const storedArtworkSource = readLocal(ARTWORK_SOURCE_KEY);
 if (storedArtworkSource === 'artist' || storedArtworkSource === 'release') {
@@ -149,6 +163,19 @@ window.addEventListener('load', () => {
   if (state.customArtworkActive) {
     applyCustomArtwork();
   }
+  ensureClientConfigLoaded()
+    .then(() => {
+      if (isTurnstileEnabled()) {
+        initialiseTurnstile();
+      } else if (turnstileWrapper) {
+        turnstileWrapper.remove();
+      }
+    })
+    .catch(() => {
+      if (turnstileWrapper) {
+        turnstileWrapper.remove();
+      }
+    });
 });
 
 function drawCanvas() {
@@ -200,6 +227,140 @@ function setStatus(message, type = 'info') {
   statusMessage.hidden = false;
   statusMessage.textContent = message;
   statusMessage.classList.toggle('error', type === 'error');
+}
+
+async function loadClientConfig() {
+  try {
+    const response = await fetch('/api/client-config', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Client config request failed (${response.status})`);
+    }
+    const payload = await response.json();
+    clientConfig.turnstileEnabled = Boolean(payload.turnstileEnabled);
+    clientConfig.turnstileSiteKey = payload.turnstileSiteKey || '';
+    return true;
+  } catch (error) {
+    console.warn('Unable to load client config', error);
+    clientConfig.turnstileEnabled = false;
+    clientConfig.turnstileSiteKey = '';
+    return false;
+  }
+}
+
+async function ensureClientConfigLoaded() {
+  if (!clientConfigPromise) {
+    clientConfigPromise = loadClientConfig();
+  }
+  try {
+    await clientConfigPromise;
+  } catch (error) {
+    console.warn('Client config unavailable, continuing with defaults.', error);
+  }
+}
+
+function updateTurnstileStatus(message, tone = 'info') {
+  if (!turnstileStatusEl) {
+    return;
+  }
+  if (!message) {
+    turnstileStatusEl.hidden = true;
+    turnstileStatusEl.textContent = '';
+    turnstileStatusEl.removeAttribute('data-tone');
+    return;
+  }
+  turnstileStatusEl.hidden = false;
+  turnstileStatusEl.textContent = message;
+  turnstileStatusEl.setAttribute('data-tone', tone);
+}
+
+function waitForTurnstileApi(maxWait = 10000) {
+  if (window.turnstile && typeof window.turnstile.render === 'function') {
+    return Promise.resolve(window.turnstile);
+  }
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const poll = window.setInterval(() => {
+      if (window.turnstile && typeof window.turnstile.render === 'function') {
+        window.clearInterval(poll);
+        resolve(window.turnstile);
+        return;
+      }
+      if (Date.now() - start >= maxWait) {
+        window.clearInterval(poll);
+        reject(new Error('Turnstile script timed out.'));
+      }
+    }, 150);
+  });
+}
+
+async function initialiseTurnstile() {
+  if (!isTurnstileEnabled() || !turnstileWrapper || !turnstileContainer) {
+    if (turnstileWrapper) {
+      turnstileWrapper.remove();
+    }
+    return;
+  }
+  try {
+    await waitForTurnstileApi();
+    turnstileWrapper.hidden = false;
+    updateTurnstileStatus('Complete the verification to generate your wrapped.');
+    turnstileWidgetId = window.turnstile.render(turnstileContainer, {
+      sitekey: clientConfig.turnstileSiteKey,
+      action: 'generate_wrapped',
+      callback(token) {
+        state.turnstileToken = token;
+        updateTurnstileStatus('Verification completed. Ready when you are.', 'success');
+      },
+      'expired-callback': () => {
+        state.turnstileToken = null;
+        updateTurnstileStatus('Verification expired. Please try again.', 'warning');
+      },
+      'error-callback': () => {
+        state.turnstileToken = null;
+        updateTurnstileStatus('Verification failed to load. Refresh to retry.', 'error');
+      },
+    });
+  } catch (error) {
+    console.error('Unable to initialise Turnstile', error);
+    turnstileWrapper.hidden = false;
+    updateTurnstileStatus('Verification service unavailable. Refresh and try again.', 'error');
+  }
+}
+
+function ensureTurnstileTokenAvailable() {
+  if (!isTurnstileEnabled()) {
+    return true;
+  }
+  if (state.turnstileToken) {
+    return true;
+  }
+  updateTurnstileStatus('Complete the verification challenge to continue.', 'warning');
+  return false;
+}
+
+function resetTurnstileToken() {
+  if (!isTurnstileEnabled()) {
+    return;
+  }
+  state.turnstileToken = null;
+  if (window.turnstile && typeof window.turnstile.reset === 'function' && turnstileWidgetId !== null) {
+    window.turnstile.reset(turnstileWidgetId);
+  }
+  updateTurnstileStatus('Complete the verification to generate your wrapped.');
+}
+
+function applyTurnstileHeaders(options = {}) {
+  if (!isTurnstileEnabled()) {
+    return options;
+  }
+  if (!state.turnstileToken) {
+    throw new Error('Complete the verification challenge to continue.');
+  }
+  const mergedOptions = { ...options };
+  const headers = new Headers(options.headers || {});
+  headers.set('X-Turnstile-Token', state.turnstileToken);
+  mergedOptions.headers = headers;
+  return mergedOptions;
 }
 
 function updateArtworkSourceControls(value) {
@@ -509,6 +670,7 @@ async function recordWrappedGenerated() {
 
 async function generateWrapped(event) {
   event.preventDefault();
+  await ensureClientConfigLoaded();
   const username = usernameField.value.trim();
   if (!username) {
     setStatus('Enter a ListenBrainz username to get started.', 'error');
@@ -562,6 +724,11 @@ async function generateWrapped(event) {
     sectionsToRefresh = [...ALL_SECTIONS];
   }
 
+  if (!ensureTurnstileTokenAvailable()) {
+    setStatus('Complete the verification challenge before generating.', 'error');
+    return;
+  }
+
   const refreshImage = sectionsToRefresh.includes('image');
 
   setStatus('');
@@ -605,11 +772,16 @@ async function generateWrapped(event) {
     downloadError.hidden = state.isCoverReady;
     toggleDownload(state.isCoverReady);
     setLoading(false);
+    resetTurnstileToken();
   }
 }
 
 async function fetchJson(path) {
-  const response = await fetch(serviceSelector.withService(path), { cache: 'no-store' });
+  await ensureClientConfigLoaded();
+  const response = await fetch(
+    serviceSelector.withService(path),
+    applyTurnstileHeaders({ cache: 'no-store' }),
+  );
   if (!response.ok) {
     throw new Error(await parseError(response));
   }
@@ -617,7 +789,11 @@ async function fetchJson(path) {
 }
 
 async function fetchText(path) {
-  const response = await fetch(serviceSelector.withService(path), { cache: 'no-store' });
+  await ensureClientConfigLoaded();
+  const response = await fetch(
+    serviceSelector.withService(path),
+    applyTurnstileHeaders({ cache: 'no-store' }),
+  );
   if (!response.ok) {
     throw new Error(await parseError(response));
   }
@@ -644,13 +820,14 @@ async function parseError(response) {
 }
 
 async function uploadArtworkToServer(file) {
+  await ensureClientConfigLoaded();
   removeLocal(ARTWORK_STORAGE_KEY);
   const formData = new FormData();
   formData.append('artwork', file, file.name || 'artwork.png');
-  const response = await fetch('/artwork/upload', {
+  const response = await fetch('/artwork/upload', applyTurnstileHeaders({
     method: 'POST',
     body: formData,
-  });
+  }));
   if (!response.ok) {
     throw new Error(await parseError(response));
   }
@@ -666,6 +843,7 @@ async function uploadArtworkToServer(file) {
 }
 
 async function loadCoverArt(username) {
+  await ensureClientConfigLoaded();
   if (state.customArtworkActive && state.customArtworkUrl) {
     if (state.coverObjectUrl) {
       URL.revokeObjectURL(state.coverObjectUrl);
@@ -685,7 +863,10 @@ async function loadCoverArt(username) {
       imageParams.set('source', 'release');
     }
     const imagePath = `/top/img/${encodeURIComponent(username)}${imageParams.toString() ? `?${imageParams.toString()}` : ''}`;
-    const response = await fetch(serviceSelector.withService(imagePath), { cache: 'no-store' });
+    const response = await fetch(
+      serviceSelector.withService(imagePath),
+      applyTurnstileHeaders({ cache: 'no-store' }),
+    );
     if (response.status === 429) {
       throw new Error(await parseError(response));
     }

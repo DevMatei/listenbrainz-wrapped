@@ -144,6 +144,36 @@ p {
   flex-wrap: wrap;
 }
 
+.form__turnstile {
+  border: 1px solid rgba(148, 163, 209, 0.35);
+  border-radius: 14px;
+  padding: 0.95rem;
+  margin-top: 0.35rem;
+  background: rgba(8, 13, 24, 0.6);
+}
+
+.turnstile-container {
+  min-height: 70px;
+}
+
+.turnstile-status {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+}
+
+.turnstile-status[data-tone="success"] {
+  color: #22c55e;
+}
+
+.turnstile-status[data-tone="warning"] {
+  color: #fbbf24;
+}
+
+.turnstile-status[data-tone="error"] {
+  color: #f87171;
+}
+
 input[type="text"] {
   flex: 1 1 220px;
   padding: 0.85rem 1rem;
