@@ -100,6 +100,14 @@ const state = {
   turnstileTokenExpiry: null,
 };
 
+function invalidateTurnstileToken() {
+  if (!isTurnstileEnabled()) {
+    return;
+  }
+  state.turnstileTokenExpiry = 0;
+  writeSession(TURNSTILE_TOKEN_EXPIRY_KEY, '0');
+}
+
 function clearStoredTurnstileToken() {
   state.turnstileToken = null;
   state.turnstileTokenExpiry = null;
@@ -467,6 +475,16 @@ function resetTurnstileToken() {
   updateTurnstileStatus('Complete the verification to generate your wrapped.');
 }
 
+async function ensureTurnstileToken(forceRefresh = false) {
+  if (!isTurnstileEnabled()) {
+    return null;
+  }
+  if (!forceRefresh && hasFreshTurnstileToken()) {
+    return state.turnstileToken;
+  }
+  return refreshTurnstileToken();
+}
+
 function applyTurnstileHeaders(options = {}) {
   if (!isTurnstileEnabled()) {
     return options;
@@ -479,6 +497,26 @@ function applyTurnstileHeaders(options = {}) {
   headers.set('X-Turnstile-Token', state.turnstileToken);
   mergedOptions.headers = headers;
   return mergedOptions;
+}
+
+async function applyTurnstileHeadersAsync(options = {}, { forceRefreshToken = false } = {}) {
+  if (!isTurnstileEnabled()) {
+    return options;
+  }
+  await ensureTurnstileToken(forceRefreshToken);
+  return applyTurnstileHeaders(options);
+}
+
+async function turnstileFetch(path, options = {}, { forceRefreshToken = false } = {}) {
+  await ensureClientConfigLoaded();
+  const mergedOptions = await applyTurnstileHeadersAsync(options, { forceRefreshToken });
+  try {
+    return await fetch(serviceSelector.withService(path), mergedOptions);
+  } finally {
+    if (isTurnstileEnabled()) {
+      invalidateTurnstileToken();
+    }
+  }
 }
 
 function handleTurnstileFailure(message, status) {
@@ -924,12 +962,8 @@ async function generateWrapped(event) {
 }
 
 async function fetchJson(path) {
-  await ensureClientConfigLoaded();
   const fetcher = async () => {
-    const response = await fetch(
-      serviceSelector.withService(path),
-      applyTurnstileHeaders({ cache: 'no-store' }),
-    );
+    const response = await turnstileFetch(path, { cache: 'no-store' });
     if (!response.ok) {
       const errorMessage = await parseError(response);
       if (handleTurnstileFailure(errorMessage, response.status)) {
@@ -945,12 +979,8 @@ async function fetchJson(path) {
 }
 
 async function fetchText(path) {
-  await ensureClientConfigLoaded();
   const fetcher = async () => {
-    const response = await fetch(
-      serviceSelector.withService(path),
-      applyTurnstileHeaders({ cache: 'no-store' }),
-    );
+    const response = await turnstileFetch(path, { cache: 'no-store' });
     if (!response.ok) {
       const errorMessage = await parseError(response);
       if (handleTurnstileFailure(errorMessage, response.status)) {
@@ -990,10 +1020,10 @@ async function uploadArtworkToServer(file) {
   const formData = new FormData();
   formData.append('artwork', file, file.name || 'artwork.png');
   const response = await fetchWithTurnstileRetry(async () => {
-    const res = await fetch('/artwork/upload', applyTurnstileHeaders({
+    const res = await turnstileFetch('/artwork/upload', {
       method: 'POST',
       body: formData,
-    }));
+    });
     if (!res.ok) {
       const errorMessage = await parseError(res);
       if (handleTurnstileFailure(errorMessage, res.status)) {
@@ -1040,10 +1070,7 @@ async function loadCoverArt(username) {
     }
     const imagePath = `/top/img/${encodeURIComponent(username)}${imageParams.toString() ? `?${imageParams.toString()}` : ''}`;
     const { response, blob } = await fetchWithTurnstileRetry(async () => {
-      const res = await fetch(
-        serviceSelector.withService(imagePath),
-        applyTurnstileHeaders({ cache: 'no-store' }),
-      );
+      const res = await turnstileFetch(imagePath, { cache: 'no-store' });
       if (res.status === 429) {
         const err = new Error(await parseError(res));
         err.__turnstileExpired = false;
@@ -1086,52 +1113,57 @@ async function loadCoverArt(username) {
 }
 
 async function updateSections(username, sections) {
-  const tasks = [];
+  const queue = [];
 
   if (sections.includes('artists')) {
-    tasks.push((async () => {
+    queue.push(async () => {
       const artists = sanitiseRankedArray(await fetchJson(`/top/artists/${encodeURIComponent(username)}/5`));
       state.generatedData.artists = artists;
       topArtistsEl.textContent = formatRankedList(artists);
-    })());
+    });
   }
 
   if (sections.includes('tracks')) {
-    tasks.push((async () => {
+    queue.push(async () => {
       const tracks = sanitiseRankedArray(await fetchJson(`/top/tracks/${encodeURIComponent(username)}/5`));
       state.generatedData.tracks = tracks;
       topTracksEl.textContent = formatRankedList(tracks);
-    })());
+    });
   }
 
   if (sections.includes('time')) {
-    tasks.push((async () => {
+    queue.push(async () => {
       const minutes = ensureMinutesLabel(await fetchText(`/time/total/${encodeURIComponent(username)}`));
       state.generatedData.minutes = minutes;
       listenTimeEl.textContent = minutes;
-    })());
+    });
   }
 
   if (sections.includes('genre')) {
-    tasks.push((async () => {
+    queue.push(async () => {
       const genre = await fetchText(`/top/genre/user/${encodeURIComponent(username)}`);
       const normalised = normaliseGenreLabel(genre);
       state.generatedData.genre = normalised;
       topGenreEl.textContent = normalised;
-    })());
+    });
   }
 
   if (sections.includes('image')) {
-    tasks.push((async () => {
+    queue.push(async () => {
       if (state.customArtworkActive && state.customArtworkUrl) {
         state.isCoverReady = await applyCustomArtwork();
       } else {
         state.isCoverReady = await loadCoverArt(username);
       }
-    })());
+    });
   }
 
-  await Promise.all(tasks);
+  // Run sequentially to avoid reusing a single Turnstile token across parallel requests.
+  /* eslint-disable no-await-in-loop */
+  for (const task of queue) {
+    await task();
+  }
+  /* eslint-enable no-await-in-loop */
 
   if (!sections.includes('artists') && Array.isArray(state.generatedData.artists)) {
     topArtistsEl.textContent = formatRankedList(state.generatedData.artists);
