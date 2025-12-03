@@ -419,6 +419,19 @@ function applyTurnstileHeaders(options = {}) {
   return mergedOptions;
 }
 
+function handleTurnstileFailure(message, status) {
+  if (!isTurnstileEnabled()) {
+    return false;
+  }
+  const normalized = (message || '').toString().toLowerCase();
+  const looksExpired = normalized.includes('verification expired') || normalized.includes('turnstile');
+  if (status === 400 && looksExpired) {
+    resetTurnstileToken();
+    return true;
+  }
+  return false;
+}
+
 function updateArtworkSourceControls(value) {
   artworkSourceInputs.forEach((input) => {
     input.checked = input.value === value;
@@ -838,7 +851,11 @@ async function fetchJson(path) {
     applyTurnstileHeaders({ cache: 'no-store' }),
   );
   if (!response.ok) {
-    throw new Error(await parseError(response));
+    const errorMessage = await parseError(response);
+    if (handleTurnstileFailure(errorMessage, response.status)) {
+      throw new Error('Verification expired. Please complete the challenge again.');
+    }
+    throw new Error(errorMessage);
   }
   return response.json();
 }
@@ -850,7 +867,11 @@ async function fetchText(path) {
     applyTurnstileHeaders({ cache: 'no-store' }),
   );
   if (!response.ok) {
-    throw new Error(await parseError(response));
+    const errorMessage = await parseError(response);
+    if (handleTurnstileFailure(errorMessage, response.status)) {
+      throw new Error('Verification expired. Please complete the challenge again.');
+    }
+    throw new Error(errorMessage);
   }
   return response.text();
 }
@@ -884,7 +905,11 @@ async function uploadArtworkToServer(file) {
     body: formData,
   }));
   if (!response.ok) {
-    throw new Error(await parseError(response));
+    const errorMessage = await parseError(response);
+    if (handleTurnstileFailure(errorMessage, response.status)) {
+      throw new Error('Verification expired. Please complete the challenge again.');
+    }
+    throw new Error(errorMessage);
   }
   const payload = await response.json();
   state.customArtworkUrl = `/artwork/${payload.token}`;
@@ -926,6 +951,10 @@ async function loadCoverArt(username) {
       throw new Error(await parseError(response));
     }
     if (!response.ok) {
+      const errorMessage = await parseError(response);
+      if (handleTurnstileFailure(errorMessage, response.status)) {
+        throw new Error('Verification expired. Please complete the challenge again.');
+      }
       throw new Error('Artist image unavailable');
     }
     const queuePosition = Number(response.headers.get('X-Image-Queue-Position'));

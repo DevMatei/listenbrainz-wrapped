@@ -4,10 +4,10 @@ const DEFAULT_ALLOWED_HOSTS = ['wrapped.devmatei.com'];
 const SUPPORT_MESSAGE_HTML = `
   <strong class="support-banner__label" aria-hidden="true">Support this project</strong>
   <p class="support-banner__note">
-    This slot stays quiet and respectful. If the network ad is blocked, sharing the site or sponsoring on GitHub helps cover hosting just as much.
+    This slot stays quiet and respectful. If the network ad is blocked, sharing the site or sponsoring the GitHub project via Ko-fi helps cover hosting just as much.
   </p>
-  <a class="support-banner__link" href="https://github.com/sponsors/DevMatei" target="_blank" rel="noopener noreferrer">
-    Back the project
+  <a class="support-banner__link" href="https://ko-fi.com/devmatei/projects" target="_blank" rel="noopener noreferrer">
+    Sponsor the GitHub project on Ko-fi
   </a>
 `;
 

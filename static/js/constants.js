@@ -34,7 +34,7 @@ export const ARTWORK_TOKEN_EXPIRY_KEY = 'wrappedArtworkTokenExpiry';
 export const ARTWORK_SOURCE_KEY = 'wrappedArtworkSource';
 export const TURNSTILE_TOKEN_KEY = 'wrappedTurnstileToken';
 export const TURNSTILE_TOKEN_EXPIRY_KEY = 'wrappedTurnstileTokenExpiry';
-export const TURNSTILE_TOKEN_TTL_MS = 4.5 * 60 * 1000;
+export const TURNSTILE_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 export const COUNTER_REFRESH_INTERVAL = 30000;
 export const MAX_ARTWORK_BYTES = 6 * 1024 * 1024;
