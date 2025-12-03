@@ -71,6 +71,10 @@ const clientConfig = {
   turnstileSiteKey: '',
 };
 let clientConfigPromise = null;
+let turnstileRefreshPromise = null;
+let turnstileRefreshResolve = null;
+let turnstileRefreshReject = null;
+let turnstileRefreshTimeout = null;
 
 const canvasRenderer = createCanvasRenderer({ canvas, themeSelect, artistImg });
 
@@ -101,6 +105,16 @@ function clearStoredTurnstileToken() {
   state.turnstileTokenExpiry = null;
   removeSession(TURNSTILE_TOKEN_KEY);
   removeSession(TURNSTILE_TOKEN_EXPIRY_KEY);
+  if (turnstileRefreshReject) {
+    turnstileRefreshReject(new Error('Verification expired.'));
+  }
+  if (turnstileRefreshTimeout) {
+    window.clearTimeout(turnstileRefreshTimeout);
+    turnstileRefreshTimeout = null;
+  }
+  turnstileRefreshPromise = null;
+  turnstileRefreshResolve = null;
+  turnstileRefreshReject = null;
 }
 
 function persistTurnstileToken(token, ttlMs = TURNSTILE_TOKEN_TTL_MS) {
@@ -113,6 +127,16 @@ function persistTurnstileToken(token, ttlMs = TURNSTILE_TOKEN_TTL_MS) {
   state.turnstileTokenExpiry = expiresAt;
   writeSession(TURNSTILE_TOKEN_KEY, token);
   writeSession(TURNSTILE_TOKEN_EXPIRY_KEY, String(expiresAt));
+  if (turnstileRefreshResolve) {
+    turnstileRefreshResolve(token);
+  }
+  if (turnstileRefreshTimeout) {
+    window.clearTimeout(turnstileRefreshTimeout);
+    turnstileRefreshTimeout = null;
+  }
+  turnstileRefreshPromise = null;
+  turnstileRefreshResolve = null;
+  turnstileRefreshReject = null;
 }
 
 function restoreTurnstileTokenFromSession() {
@@ -138,6 +162,38 @@ function hasFreshTurnstileToken() {
     return true;
   }
   return restoreTurnstileTokenFromSession();
+}
+
+async function refreshTurnstileToken() {
+  if (!isTurnstileEnabled()) {
+    return null;
+  }
+  if (turnstileRefreshPromise) {
+    return turnstileRefreshPromise;
+  }
+  resetTurnstileToken();
+  turnstileRefreshPromise = new Promise((resolve, reject) => {
+    turnstileRefreshResolve = resolve;
+    turnstileRefreshReject = reject;
+    turnstileRefreshTimeout = window.setTimeout(() => {
+      turnstileRefreshTimeout = null;
+      turnstileRefreshPromise = null;
+      turnstileRefreshResolve = null;
+      turnstileRefreshReject = null;
+      reject(new Error('Verification timed out. Please retry the challenge.'));
+    }, 15000);
+  });
+
+  // If widget supports automatic execution, trigger it to avoid extra clicks.
+  if (window.turnstile && typeof window.turnstile.execute === 'function' && turnstileWidgetId !== null) {
+    try {
+      window.turnstile.execute(turnstileWidgetId);
+    } catch (error) {
+      console.warn('Automatic Turnstile execution failed; waiting for user interaction.', error);
+    }
+  }
+
+  return turnstileRefreshPromise;
 }
 
 function isTurnstileEnabled() {
@@ -369,10 +425,16 @@ async function initialiseTurnstile() {
       'expired-callback': () => {
         clearStoredTurnstileToken();
         updateTurnstileStatus('Verification expired. Please try again.', 'warning');
+        if (turnstileRefreshReject) {
+          turnstileRefreshReject(new Error('Verification expired.'));
+        }
       },
       'error-callback': () => {
         clearStoredTurnstileToken();
         updateTurnstileStatus('Verification failed to load. Refresh to retry.', 'error');
+        if (turnstileRefreshReject) {
+          turnstileRefreshReject(new Error('Verification failed to load.'));
+        }
       },
     });
   } catch (error) {
@@ -430,6 +492,23 @@ function handleTurnstileFailure(message, status) {
     return true;
   }
   return false;
+}
+
+async function fetchWithTurnstileRetry(fetcher) {
+  let retried = false;
+  while (true) {
+    try {
+      return await fetcher();
+    } catch (error) {
+      const message = (error && error.message) || '';
+      const expired = Boolean(error && (error.__turnstileExpired || message.toLowerCase().includes('verification')));
+      if (!expired || retried || !isTurnstileEnabled()) {
+        throw error;
+      }
+      retried = true;
+      await refreshTurnstileToken();
+    }
+  }
 }
 
 function updateArtworkSourceControls(value) {
@@ -846,34 +925,44 @@ async function generateWrapped(event) {
 
 async function fetchJson(path) {
   await ensureClientConfigLoaded();
-  const response = await fetch(
-    serviceSelector.withService(path),
-    applyTurnstileHeaders({ cache: 'no-store' }),
-  );
-  if (!response.ok) {
-    const errorMessage = await parseError(response);
-    if (handleTurnstileFailure(errorMessage, response.status)) {
-      throw new Error('Verification expired. Please complete the challenge again.');
+  const fetcher = async () => {
+    const response = await fetch(
+      serviceSelector.withService(path),
+      applyTurnstileHeaders({ cache: 'no-store' }),
+    );
+    if (!response.ok) {
+      const errorMessage = await parseError(response);
+      if (handleTurnstileFailure(errorMessage, response.status)) {
+        const err = new Error('Verification expired. Please complete the challenge again.');
+        err.__turnstileExpired = true;
+        throw err;
+      }
+      throw new Error(errorMessage);
     }
-    throw new Error(errorMessage);
-  }
-  return response.json();
+    return response.json();
+  };
+  return fetchWithTurnstileRetry(fetcher);
 }
 
 async function fetchText(path) {
   await ensureClientConfigLoaded();
-  const response = await fetch(
-    serviceSelector.withService(path),
-    applyTurnstileHeaders({ cache: 'no-store' }),
-  );
-  if (!response.ok) {
-    const errorMessage = await parseError(response);
-    if (handleTurnstileFailure(errorMessage, response.status)) {
-      throw new Error('Verification expired. Please complete the challenge again.');
+  const fetcher = async () => {
+    const response = await fetch(
+      serviceSelector.withService(path),
+      applyTurnstileHeaders({ cache: 'no-store' }),
+    );
+    if (!response.ok) {
+      const errorMessage = await parseError(response);
+      if (handleTurnstileFailure(errorMessage, response.status)) {
+        const err = new Error('Verification expired. Please complete the challenge again.');
+        err.__turnstileExpired = true;
+        throw err;
+      }
+      throw new Error(errorMessage);
     }
-    throw new Error(errorMessage);
-  }
-  return response.text();
+    return response.text();
+  };
+  return fetchWithTurnstileRetry(fetcher);
 }
 
 async function parseError(response) {
@@ -900,17 +989,24 @@ async function uploadArtworkToServer(file) {
   removeLocal(ARTWORK_STORAGE_KEY);
   const formData = new FormData();
   formData.append('artwork', file, file.name || 'artwork.png');
-  const response = await fetch('/artwork/upload', applyTurnstileHeaders({
-    method: 'POST',
-    body: formData,
-  }));
-  if (!response.ok) {
-    const errorMessage = await parseError(response);
-    if (handleTurnstileFailure(errorMessage, response.status)) {
-      throw new Error('Verification expired. Please complete the challenge again.');
+  const response = await fetchWithTurnstileRetry(async () => {
+    const res = await fetch('/artwork/upload', applyTurnstileHeaders({
+      method: 'POST',
+      body: formData,
+    }));
+    if (!res.ok) {
+      const errorMessage = await parseError(res);
+      if (handleTurnstileFailure(errorMessage, res.status)) {
+        const err = new Error('Verification expired. Please complete the challenge again.');
+        err.__turnstileExpired = true;
+        throw err;
+      }
+      const err = new Error(errorMessage);
+      err.__turnstileExpired = false;
+      throw err;
     }
-    throw new Error(errorMessage);
-  }
+    return res;
+  });
   const payload = await response.json();
   state.customArtworkUrl = `/artwork/${payload.token}`;
   state.customArtworkActive = true;
@@ -943,20 +1039,31 @@ async function loadCoverArt(username) {
       imageParams.set('source', 'release');
     }
     const imagePath = `/top/img/${encodeURIComponent(username)}${imageParams.toString() ? `?${imageParams.toString()}` : ''}`;
-    const response = await fetch(
-      serviceSelector.withService(imagePath),
-      applyTurnstileHeaders({ cache: 'no-store' }),
-    );
-    if (response.status === 429) {
-      throw new Error(await parseError(response));
-    }
-    if (!response.ok) {
-      const errorMessage = await parseError(response);
-      if (handleTurnstileFailure(errorMessage, response.status)) {
-        throw new Error('Verification expired. Please complete the challenge again.');
+    const { response, blob } = await fetchWithTurnstileRetry(async () => {
+      const res = await fetch(
+        serviceSelector.withService(imagePath),
+        applyTurnstileHeaders({ cache: 'no-store' }),
+      );
+      if (res.status === 429) {
+        const err = new Error(await parseError(res));
+        err.__turnstileExpired = false;
+        throw err;
       }
-      throw new Error('Artist image unavailable');
-    }
+      if (!res.ok) {
+        const errorMessage = await parseError(res);
+        if (handleTurnstileFailure(errorMessage, res.status)) {
+          const err = new Error('Verification expired. Please complete the challenge again.');
+          err.__turnstileExpired = true;
+          throw err;
+        }
+        const err = new Error('Artist image unavailable');
+        err.__turnstileExpired = false;
+        throw err;
+      }
+      const blobResult = await res.blob();
+      return { response: res, blob: blobResult };
+    });
+
     const queuePosition = Number(response.headers.get('X-Image-Queue-Position'));
     if (Number.isFinite(queuePosition) && queuePosition > 0) {
       setStatus(`Image queue is busy (position ${queuePosition}). Hang tight, we’ll grab the art asap.`);
@@ -965,7 +1072,6 @@ async function loadCoverArt(username) {
       setStatus('');
       state.queueMessageVisible = false;
     }
-    const blob = await response.blob();
     state.coverObjectUrl = URL.createObjectURL(blob);
     const loaded = await loadImage(artistImg, state.coverObjectUrl);
     if (!loaded) {
