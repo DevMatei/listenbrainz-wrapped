@@ -6,6 +6,9 @@ import {
   ARTWORK_TOKEN_EXPIRY_KEY,
   ARTWORK_SOURCE_KEY,
   BACKGROUND_SOURCES,
+  TURNSTILE_TOKEN_KEY,
+  TURNSTILE_TOKEN_EXPIRY_KEY,
+  TURNSTILE_TOKEN_TTL_MS,
   COUNTER_REFRESH_INTERVAL,
   MAX_ARTWORK_BYTES,
   SERVICE_LABELS,
@@ -90,7 +93,52 @@ const state = {
   queueMessageVisible: false,
   artworkSource: 'artist',
   turnstileToken: null,
+  turnstileTokenExpiry: null,
 };
+
+function clearStoredTurnstileToken() {
+  state.turnstileToken = null;
+  state.turnstileTokenExpiry = null;
+  removeSession(TURNSTILE_TOKEN_KEY);
+  removeSession(TURNSTILE_TOKEN_EXPIRY_KEY);
+}
+
+function persistTurnstileToken(token, ttlMs = TURNSTILE_TOKEN_TTL_MS) {
+  if (!token) {
+    clearStoredTurnstileToken();
+    return;
+  }
+  const expiresAt = Date.now() + (Number(ttlMs) || TURNSTILE_TOKEN_TTL_MS);
+  state.turnstileToken = token;
+  state.turnstileTokenExpiry = expiresAt;
+  writeSession(TURNSTILE_TOKEN_KEY, token);
+  writeSession(TURNSTILE_TOKEN_EXPIRY_KEY, String(expiresAt));
+}
+
+function restoreTurnstileTokenFromSession() {
+  try {
+    const storedToken = readSession(TURNSTILE_TOKEN_KEY);
+    const storedExpiry = Number(readSession(TURNSTILE_TOKEN_EXPIRY_KEY));
+    if (storedToken && Number.isFinite(storedExpiry) && Date.now() < storedExpiry) {
+      state.turnstileToken = storedToken;
+      state.turnstileTokenExpiry = storedExpiry;
+      return true;
+    }
+    clearStoredTurnstileToken();
+  } catch (error) {
+    console.warn('Session storage unavailable; cannot restore Turnstile token.', error);
+    state.turnstileToken = null;
+    state.turnstileTokenExpiry = null;
+  }
+  return false;
+}
+
+function hasFreshTurnstileToken() {
+  if (state.turnstileToken && (!state.turnstileTokenExpiry || Date.now() < state.turnstileTokenExpiry)) {
+    return true;
+  }
+  return restoreTurnstileTokenFromSession();
+}
 
 function isTurnstileEnabled() {
   return Boolean(clientConfig.turnstileEnabled && clientConfig.turnstileSiteKey);
@@ -149,6 +197,7 @@ artworkSourceInputs.forEach((input) => {
 restoreImageTransform();
 restoreStoredArtwork();
 setArtworkEditorEnabled(state.customArtworkActive);
+restoreTurnstileTokenFromSession();
 
 window.addEventListener('load', () => {
   toggleDownload(false);
@@ -302,21 +351,27 @@ async function initialiseTurnstile() {
   }
   try {
     await waitForTurnstileApi();
+    const alreadyValidated = hasFreshTurnstileToken();
     turnstileWrapper.hidden = false;
-    updateTurnstileStatus('Complete the verification to generate your wrapped.');
+    updateTurnstileStatus(
+      alreadyValidated
+        ? 'Verification already completed for this session. You can generate your wrapped.'
+        : 'Complete the verification to generate your wrapped.',
+      alreadyValidated ? 'success' : 'info',
+    );
     turnstileWidgetId = window.turnstile.render(turnstileContainer, {
       sitekey: clientConfig.turnstileSiteKey,
       action: 'generate_wrapped',
       callback(token) {
-        state.turnstileToken = token;
-        updateTurnstileStatus('Verification completed. Ready when you are.', 'success');
+        persistTurnstileToken(token);
+        updateTurnstileStatus('Verification completed for this session. Ready when you are.', 'success');
       },
       'expired-callback': () => {
-        state.turnstileToken = null;
+        clearStoredTurnstileToken();
         updateTurnstileStatus('Verification expired. Please try again.', 'warning');
       },
       'error-callback': () => {
-        state.turnstileToken = null;
+        clearStoredTurnstileToken();
         updateTurnstileStatus('Verification failed to load. Refresh to retry.', 'error');
       },
     });
@@ -331,10 +386,11 @@ function ensureTurnstileTokenAvailable() {
   if (!isTurnstileEnabled()) {
     return true;
   }
-  if (state.turnstileToken) {
+  if (hasFreshTurnstileToken()) {
+    updateTurnstileStatus('Verification already completed for this session. You can keep generating.', 'success');
     return true;
   }
-  updateTurnstileStatus('Complete the verification challenge to continue.', 'warning');
+  resetTurnstileToken();
   return false;
 }
 
@@ -342,7 +398,7 @@ function resetTurnstileToken() {
   if (!isTurnstileEnabled()) {
     return;
   }
-  state.turnstileToken = null;
+  clearStoredTurnstileToken();
   if (window.turnstile && typeof window.turnstile.reset === 'function' && turnstileWidgetId !== null) {
     window.turnstile.reset(turnstileWidgetId);
   }
@@ -353,7 +409,7 @@ function applyTurnstileHeaders(options = {}) {
   if (!isTurnstileEnabled()) {
     return options;
   }
-  if (!state.turnstileToken) {
+  if (!hasFreshTurnstileToken()) {
     throw new Error('Complete the verification challenge to continue.');
   }
   const mergedOptions = { ...options };
@@ -772,7 +828,6 @@ async function generateWrapped(event) {
     downloadError.hidden = state.isCoverReady;
     toggleDownload(state.isCoverReady);
     setLoading(false);
-    resetTurnstileToken();
   }
 }
 
