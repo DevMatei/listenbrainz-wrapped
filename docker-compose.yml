@@ -1,6 +1,6 @@
 services:
   listenbrainz-wrapped:
-    image: ghcr.io/iostpa/listenbrainz-wrapped:latest
+    image: ghcr.io/devmatei/listenbrainz-wrapped:latest
     restart: unless-stopped
     ports:
       - "8000:8000"
