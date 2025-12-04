@@ -45,6 +45,11 @@ or locally
 ./start.sh <host> <port>
 ```
 
+or use the docker-compose.yml file (make sure to change the port to the one you want to use) and run
+```bash
+sudo docker compose up -d
+```
+
 ### 🧠 production
 
 * reverse proxy + https
