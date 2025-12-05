@@ -3,7 +3,7 @@
 wrapped generator for listenbrainz built with flask
 
 > [!IMPORTANT]
-> Website is a bit unstable because its in the process of moving servers, so expect the website to be down most of the time.
+> Website is a bit broken while switching servers so it is not working as intended for now. The only issue that needs to be fixed is how the website sends requests, which can be seen [here](https://github.com/DevMatei/listenbrainz-wrapped/issues/14) with a bit more details.
 
  
 <img width="1857" height="983" alt="ListenBrainz Wrapped — shareable stats for your scrobbles" src="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c" />
