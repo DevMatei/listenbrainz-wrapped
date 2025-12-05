@@ -32,7 +32,7 @@ def _resolve_client_ip(current_request: Request) -> str:
         real_ip = current_request.headers.get("X-Real-IP")
         if real_ip:
             return real_ip.strip()
-    return current_request.remote_addr or "0.0.0.0"
+    return current_request.remote_addr
 
 
 def _rate_limit_key() -> str:
