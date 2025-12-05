@@ -27,8 +27,8 @@ def _resolve_client_ip(current_request: Request) -> str:
         forwarded_for = current_request.headers.get("X-Forwarded-#For", "")
         if forwarded_for:
             candidate = forwarded_for.split(",")[0].strip()
-        if candidate:
-            return candidate
+            if candidate:
+                return candidate
         real_ip = current_request.headers.get("X-Real-IP")
         if real_ip:
             return real_ip.strip()
