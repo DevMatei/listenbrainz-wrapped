@@ -1,7 +1,10 @@
 # 🎧 ListenBrainz Wrapped
 
 wrapped generator for listenbrainz built with flask
- 
+
+> [!IMPORTANT]
+> Website is currently down because of some hosting related problems, I am actively trying to find a new place to host it. Feel free to self-host it so you can use it! 
+
  
 <img width="1857" height="983" alt="ListenBrainz Wrapped — shareable stats for your scrobbles" src="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c" />
 
