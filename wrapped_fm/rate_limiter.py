@@ -16,8 +16,8 @@ from .config import (
 
 try:
     from flask_limiter import Limiter
-except ImportError:
-    Limiter = None
+except ImportError: #pragma: no cover - optional depedency
+    Limiter = None #type: ignore
 
 limiter: Optional["Limiter"] = None
 
@@ -29,7 +29,7 @@ def _resolve_client_ip(current_request: Request) -> str:
             candidate = forwarded_for.split(",")[0].strip()
         if candidate:
             return candidate
-            real_ip = current_request.headers.get("X-Real-IP")
+        real_ip = current_request.headers.get("X-Real-IP")
         if real_ip:
             return real_ip.strip()
     return current_request.remote_addr or "0.0.0.0"
