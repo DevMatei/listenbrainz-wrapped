@@ -2,3 +2,5 @@ Flask>=2.2,<3.0
 requests>=2.31
 Flask-Limiter>=3.5
 python-dotenv>=1.0
+gunicorn>=23.0.0
+rich>=14.2.0

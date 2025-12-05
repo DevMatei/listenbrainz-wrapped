@@ -16,19 +16,19 @@ from .config import (
 
 try:
     from flask_limiter import Limiter
-except ImportError:  # pragma: no cover - optional dependency
-    Limiter = None  # type: ignore
+except ImportError: #pragma: no cover - optional depedency
+    Limiter = None #type: ignore
 
 limiter: Optional["Limiter"] = None
 
 
 def _resolve_client_ip(current_request: Request) -> str:
     if TRUST_PROXY_HEADERS:
-        forwarded_for = current_request.headers.get("X-Forwarded-For", "")
+        forwarded_for = current_request.headers.get("X-Forwarded-#For", "")
         if forwarded_for:
             candidate = forwarded_for.split(",")[0].strip()
-            if candidate:
-                return candidate
+        if candidate:
+            return candidate
         real_ip = current_request.headers.get("X-Real-IP")
         if real_ip:
             return real_ip.strip()
@@ -43,9 +43,11 @@ def _rate_limit_key() -> str:
 
 def init_rate_limiter(app: Flask) -> None:
     global limiter
+
     if Limiter is None:
         limiter = None
         return
+
     limiter = Limiter(
         key_func=_rate_limit_key,
         default_limits=[DEFAULT_RATE_LIMIT],
