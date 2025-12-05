@@ -200,23 +200,6 @@ p {
   color: var(--text-muted);
 }
 
-.support-banner__ad {
-  min-height: 120px;
-  border-radius: 12px;
-  border: 1px dashed rgba(148, 163, 209, 0.35);
-  background: rgba(8, 13, 24, 0.65);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.support-banner__fallback {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
 input[type="text"] {
   flex: 1 1 220px;
   padding: 0.85rem 1rem;
@@ -366,13 +349,6 @@ select {
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 209, 0.18);
   background: rgba(8, 13, 24, 0.45);
-}
-
-.artwork-source__label {
-  font-size: 0.8rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 .artwork-source__options {
