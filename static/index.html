@@ -87,6 +87,8 @@
               <label class="form__label" for="color">Card theme</label>
               <select id="color" name="color">
                 <option value="black">Midnight</option>
+                <option value="black_new">Midnight (New)</option>
+                <option value="white_new">Daylight (New)</option>
                 <option value="purple">Twilight</option>
                 <option value="yellow">Sunrise</option>
                 <option value="pink">Bloom</option>
@@ -184,7 +186,7 @@
             </div>
             <input type="file" id="artwork-upload" accept="image/*" hidden>
             <p class="artwork-controls__hint">
-              Override the Last.fm artwork if it looks wrong or you just prefer a different image. We keep it in local storage; if that fails we temporarily store it for 1 hour and then delete it automatically.
+              Override the artist artwork if it looks wrong or you just prefer a different image. 
             </p>
             <div class="artwork-source" role="group" aria-labelledby="artwork-source-label">
               <span id="artwork-source-label" class="artwork-source__label">Artwork source</span>
@@ -249,9 +251,9 @@
 
       <section class="card card--repo" aria-label="Project links">
         <div class="card__body">
-          <h2>Open source & self-hostable</h2>
+          <h2>It`s FOSS!</h2>
           <p>
-            This project is AGPL-licensed, built in public, and happy to live on your homelab. Star the repo, open issues, or lob pull requests if you break something (or make it better).
+            This project is AGPL-licensed. Star the repo, open issues, or contribute to the code on GitHub!
           </p>
           <a class="link-button" href="https://github.com/DevMatei/listenbrainz-wrapped" target="_blank" rel="noopener noreferrer">
             View the GitHub repo
@@ -273,10 +275,10 @@
         <div class="card__body">
           <h2>Why this exists</h2>
           <p>
-            Yeah, the idea is for people whose friends all use Spotify and post their Wrapped. When you share a ListenBrainz one everyone replies “wait, what’s that?”—so this bridges the gap. I swapped Spotify for Navidrome but still wanted that wrapped-moment vibe.
+            Yeah, the idea is for people whose friends all use Spotify and post their Wrapped. When you share a ListenBrainz one everyone replies “wait, what’s that?”-so this bridges the gap. I swapped Spotify for Navidrome but still wanted that wrapped-moment vibe.
           </p>
           <p>
-            Share <a href="https://wrapped.devmatei.com" target="_blank" rel="noopener noreferrer">wrapped.devmatei.com</a>, flex your open music stats, and maybe convince someone to try self-hosting—or at least spark a nerdy chat.
+            Share <a href="https://wrapped.devmatei.com" target="_blank" rel="noopener noreferrer">wrapped.devmatei.com</a> for a cookie 🍪
           </p>
         </div>
       </section>
@@ -294,12 +296,12 @@
         <div class="card__body">
           <h2>About Matei</h2>
           <p>
-            I’m Matei (aka <a href="https://github.com/devmatei" target="_blank" rel="noopener noreferrer">DevMatei</a>) — a full-stack dev who lives for shipping playful tooling, tinkering with AI + homelab setups, and streaming on Twitch. If I’m not hacking on this, I’m gaming, vibing to music, or hanging with the indie web crowd (tea > coffee forever).
+            I’m Matei (aka <a href="https://github.com/devmatei" target="_blank" rel="noopener noreferrer">DevMatei</a>) - a full-stack developer and open-source lover. I have a homelab running debian on which I host this project andd I use arch, btw :3
           </p>
           <p>
             Want to collaborate, talk self-hosting, or peek at other experiments? Hit <a href="https://devmatei.com" target="_blank" rel="noopener noreferrer">devmatei.com</a>, say hi on socials, or drop me a note at <a href="mailto:hello@devmatei.com">hello@devmatei.com</a>.
-          </p>
-        </div>
+            </p>
+          </div>
       </section>
 
       <section class="card card--counter" aria-live="polite" aria-label="Live wrapped counter">

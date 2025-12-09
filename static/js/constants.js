@@ -1,5 +1,7 @@
 export const BACKGROUND_SOURCES = {
   black: 'img/black.png',
+  black_new: 'img/black_new.jpg',
+  white_new: 'img/white_new.jpg',
   purple: 'img/purple.png',
   yellow: 'img/yellow.png',
   pink: 'img/pink.png',
@@ -7,6 +9,8 @@ export const BACKGROUND_SOURCES = {
 
 export const THEME_COLORS = {
   black: { label: '#f3f6ff', value: '#ffffff' },
+  black_new: { label: '#f3f6ff', value: '#ffffff' },
+  white_new: { label: '#2b2118', value: '#3b2815' },
   purple: { label: '#efe7ff', value: '#ffffff' },
   yellow: { label: '#2b2118', value: '#3b2815' },
   pink: { label: '#ffe7f5', value: '#ffffff' },

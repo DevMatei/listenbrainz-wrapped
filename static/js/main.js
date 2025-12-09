@@ -511,7 +511,27 @@ async function turnstileFetch(path, options = {}, { forceRefreshToken = false } 
   await ensureClientConfigLoaded();
   const mergedOptions = await applyTurnstileHeadersAsync(options, { forceRefreshToken });
   try {
-    return await fetch(serviceSelector.withService(path), mergedOptions);
+    // Add timeout to fetch - be generous with timeouts for local/slow environments
+    // Image endpoints can be slow due to external API calls, JSON endpoints are typically faster
+    const timeoutMs = path.includes('/top/img/') ? 120000 : 60000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+      const response = await fetch(serviceSelector.withService(path), {
+        ...mergedOptions,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        const timeoutSeconds = Math.round(timeoutMs / 1000);
+        throw new Error(`Request timeout (${timeoutSeconds}s)`);
+      }
+      throw error;
+    }
   } finally {
     if (isTurnstileEnabled()) {
       invalidateTurnstileToken();
@@ -1107,6 +1127,10 @@ async function loadCoverArt(username) {
     return true;
   } catch (error) {
     console.info('Artist image unavailable, using theme background instead.', error);
+    const errorMessage = error?.message || 'Unknown error';
+    if (errorMessage.includes('timeout') || errorMessage.includes('NetworkError')) {
+      console.warn('Image fetch timed out or had network issues. This may be due to slow external services.');
+    }
     await loadImage(artistImg, BACKGROUND_SOURCES.black);
     return false;
   }

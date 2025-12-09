@@ -119,9 +119,12 @@ export function createCanvasRenderer({ canvas, themeSelect, artistImg }) {
     }
 
     if (isCoverReady && artistImg.complete && artistImg.naturalWidth > 0) {
-      const destX = 268;
-      const destY = 244;
-      const destSize = 544;
+      const isBlackNew = theme === 'black_new';
+      const isWhiteNew = theme === 'white_new';
+      const isNewTemplate = isBlackNew || isWhiteNew;
+      const destX = isNewTemplate ? 217 : 268;  
+      const destY = isNewTemplate ? 70 : 244;  
+      const destSize = isNewTemplate ? 780 : 544;
       const imgWidth = artistImg.naturalWidth;
       const imgHeight = artistImg.naturalHeight;
       const containScale = Math.min(destSize / imgWidth, destSize / imgHeight);
@@ -157,6 +160,7 @@ export function createCanvasRenderer({ canvas, themeSelect, artistImg }) {
     }
 
     const palette = getPalette(theme);
+    const isNewTemplate = theme === 'black_new' || theme === 'white_new';
     const listHeadingY = 1080;
     const listStartY = 1180;
     const summaryLabelY = 1700;
@@ -165,28 +169,35 @@ export function createCanvasRenderer({ canvas, themeSelect, artistImg }) {
     ctx.fillStyle = palette.label;
     ctx.textBaseline = 'top';
 
-    ctx.font = '400 40px Nunito';
+    const headingFont = isNewTemplate ? '600 48px Nunito' : '400 40px Nunito';
+    const listItemFont = isNewTemplate ? '800 48px Nunito' : '700 40px Nunito';
+    const labelFont = isNewTemplate ? '600 48px Nunito' : '400 40px Nunito';
+    const valueFont = isNewTemplate ? '800 80px Nunito' : '700 68px Nunito';
+
+    ctx.font = headingFont;
     ctx.fillText('Top Artists', leftColumnX, listHeadingY);
     ctx.fillText('Top Tracks', rightColumnX, listHeadingY);
 
     const artistList = Array.isArray(data.artists) ? data.artists : [];
     const trackList = Array.isArray(data.tracks) ? data.tracks : [];
-    ctx.font = '700 40px Nunito';
+    ctx.font = listItemFont;
     drawList(artistList, leftColumnX, listStartY, palette.value, leftColumnWidth);
     drawList(trackList, rightColumnX, listStartY, palette.value, rightColumnWidth);
 
-    ctx.font = '400 40px Nunito';
+    ctx.font = labelFont;
     ctx.fillStyle = palette.label;
     ctx.fillText('Minutes Listened', leftColumnX, summaryLabelY);
     ctx.fillText('Top Genre', rightColumnX, summaryLabelY);
 
-    ctx.font = '700 68px Nunito';
+    ctx.font = valueFont;
     ctx.fillStyle = palette.value;
     const minutesLabel = typeof data.minutes === 'string' ? data.minutes : '0';
     const minutesLayout = fitTextWithFont(minutesLabel, {
       maxWidth: leftColumnWidth,
-      minFontSize: 44,
+      minFontSize: isNewTemplate ? 50 : 44,
       ellipsize: true,
+      fontWeight: isNewTemplate ? '800' : '700',
+      fontSize: isNewTemplate ? 80 : 68,
     });
     ctx.font = minutesLayout.font;
     ctx.fillText(minutesLayout.text, leftColumnX, summaryValueY);
@@ -195,6 +206,8 @@ export function createCanvasRenderer({ canvas, themeSelect, artistImg }) {
     const genreLayout = fitTextWithFont(genreLabel, {
       maxWidth: rightColumnWidth,
       ellipsize: true,
+      fontWeight: isNewTemplate ? '800' : '700',
+      fontSize: isNewTemplate ? 80 : 68,
     });
     ctx.font = genreLayout.font;
     ctx.fillText(genreLayout.text, rightColumnX, summaryValueY);

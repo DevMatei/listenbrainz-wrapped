@@ -15,4 +15,5 @@ RUN pip install --upgrade pip && \
 COPY . .
 
 # Specify the command to run the application
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "wrapped-fm:app"]
+# timeout increased to 120s to accommodate slow image fetching from external APIs
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "120", "wrapped-fm:app"]
