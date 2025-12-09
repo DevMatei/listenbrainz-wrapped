@@ -4,6 +4,8 @@ wrapped generator for listenbrainz built with flask
 
 > [!IMPORTANT]
 > Website should be back now, if you have any issues while using the website please make a new [GitHub issue](https://github.com/DevMatei/listenbrainz-wrapped/issues/new/choose).
+>
+> New templates for 2025 added!!
 
  
 <img width="1857" height="983" alt="ListenBrainz Wrapped — shareable stats for your scrobbles" src="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c" />
