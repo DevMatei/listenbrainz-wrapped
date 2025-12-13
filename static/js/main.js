@@ -15,6 +15,7 @@ import {
 } from './constants.js';
 import { createCanvasRenderer } from './canvas-renderer.js';
 import { createServiceSelector } from './service-selector.js';
+import { NavidromeClient } from './navidrome-client.js';
 import {
   formatSectionListForStatus,
   parseSectionSelection,
@@ -34,13 +35,13 @@ import {
   removeSession,
 } from './storage.js';
 
-const serviceSelector = createServiceSelector();
-serviceSelector.init();
-
 const canvas = document.getElementById('canvas');
 const themeSelect = document.getElementById('color');
 const form = document.getElementById('wrapped-form');
 const usernameField = document.getElementById('username');
+const navidromeUsernameInput = document.getElementById('navidrome-username');
+const usernameLabel = document.getElementById('username-label');
+const serviceHiddenInput = document.getElementById('service');
 const turnstileWrapper = document.getElementById('turnstile-wrapper');
 const turnstileContainer = document.getElementById('turnstile-container');
 const turnstileStatusEl = document.getElementById('turnstile-status');
@@ -63,8 +64,14 @@ const artworkScaleInput = document.getElementById('artwork-scale');
 const artworkOffsetXInput = document.getElementById('artwork-offset-x');
 const artworkOffsetYInput = document.getElementById('artwork-offset-y');
 const artworkSourceInputs = document.querySelectorAll('input[name="artwork-source"]');
+const artworkReleaseInput = Array.from(artworkSourceInputs).find((input) => input.value === 'release');
+const artworkReleaseLabel = artworkReleaseInput ? artworkReleaseInput.closest('.artwork-source__option') : null;
+const navidromeFields = document.getElementById('navidrome-fields');
+const navidromeServerInput = document.getElementById('navidrome-server');
+const navidromePasswordInput = document.getElementById('navidrome-password');
 const wrappedCountEl = document.getElementById('wrapped-count');
 const wrappedCountSinceEl = document.getElementById('wrapped-count-since');
+const defaultUsernameLabel = usernameLabel ? usernameLabel.textContent : 'ListenBrainz username';
 let turnstileWidgetId = null;
 const clientConfig = {
   turnstileEnabled: false,
@@ -77,6 +84,85 @@ let turnstileRefreshReject = null;
 let turnstileRefreshTimeout = null;
 
 const canvasRenderer = createCanvasRenderer({ canvas, themeSelect, artistImg });
+
+function getSelectedService() {
+  return serviceSelector.getValue();
+}
+
+function isNavidromeSelected() {
+  return getSelectedService() === 'navidrome';
+}
+
+function clearNavidromeState() {
+  if (state.coverObjectUrl && !state.customArtworkActive) {
+    URL.revokeObjectURL(state.coverObjectUrl);
+    state.coverObjectUrl = null;
+  }
+  state.navidromeClient = null;
+  state.navidromeStats = null;
+}
+
+function handleServiceChange(nextValue) {
+  const selectedService = nextValue || getSelectedService();
+  const isNavidrome = selectedService === 'navidrome';
+  if (usernameLabel) {
+    usernameLabel.textContent = isNavidrome ? 'Navidrome username' : defaultUsernameLabel;
+    usernameLabel.setAttribute('for', isNavidrome && navidromeUsernameInput ? 'navidrome-username' : 'username');
+  }
+  if (usernameField) {
+    usernameField.hidden = isNavidrome;
+    if (typeof usernameField.required === 'boolean') {
+      usernameField.required = !isNavidrome;
+    }
+  }
+  if (navidromeUsernameInput) {
+    navidromeUsernameInput.hidden = !isNavidrome;
+    if (typeof navidromeUsernameInput.required === 'boolean') {
+      navidromeUsernameInput.required = isNavidrome;
+    } else if (isNavidrome) {
+      navidromeUsernameInput.setAttribute('required', 'required');
+    } else {
+      navidromeUsernameInput.removeAttribute('required');
+    }
+  }
+  if (navidromeFields) {
+    navidromeFields.hidden = !isNavidrome;
+    navidromeFields.style.display = isNavidrome ? '' : 'none';
+    navidromeFields.setAttribute('aria-hidden', String(!isNavidrome));
+  }
+  if (turnstileWrapper) {
+    turnstileWrapper.hidden = Boolean(isNavidrome || !isTurnstileEnabled());
+  }
+  disableReleaseArtworkOption(isNavidrome);
+  if (!isNavidrome) {
+    clearNavidromeState();
+  }
+}
+
+function readNavidromeCredentials(username) {
+  if (!navidromeServerInput || !navidromePasswordInput) {
+    throw new Error('Navidrome inputs unavailable.');
+  }
+  const serverUrlRaw = navidromeServerInput.value.trim();
+  const password = navidromePasswordInput.value;
+  if (!serverUrlRaw) {
+    throw new Error('Enter your Navidrome server URL (including http:// or https://).');
+  }
+  if (!/^https?:\/\//i.test(serverUrlRaw)) {
+    throw new Error('Include http:// or https:// in the Navidrome server URL.');
+  }
+  if (!username) {
+    throw new Error('Enter your Navidrome username to continue.');
+  }
+  if (!password) {
+    throw new Error('Enter your Navidrome password or app token.');
+  }
+  const normalisedUrl = serverUrlRaw.replace(/\/+$/, '');
+  return {
+    serverUrl: normalisedUrl,
+    password,
+  };
+}
 
 function getServiceLabel(key) {
   if (SERVICE_LABELS[key]) {
@@ -98,7 +184,19 @@ const state = {
   artworkSource: 'artist',
   turnstileToken: null,
   turnstileTokenExpiry: null,
+  navidromeClient: null,
+  navidromeStats: null,
 };
+
+const serviceSelector = createServiceSelector();
+serviceSelector.init();
+if (serviceHiddenInput) {
+  serviceHiddenInput.addEventListener('servicechange', (event) => {
+    const value = event && event.detail ? event.detail.value : null;
+    handleServiceChange(value);
+  });
+}
+handleServiceChange(serviceSelector.getValue());
 
 function invalidateTurnstileToken() {
   if (!isTurnstileEnabled()) {
@@ -578,6 +676,9 @@ function updateArtworkSourceControls(value) {
 function setArtworkSource(value, { persist = true, refresh = true } = {}) {
   const next = value === 'release' ? 'release' : 'artist';
   const changed = state.artworkSource !== next;
+  if (next === 'release' && isNavidromeSelected()) {
+    return;
+  }
   state.artworkSource = next;
   if (persist) {
     writeLocal(ARTWORK_SOURCE_KEY, next);
@@ -614,6 +715,20 @@ function setArtworkSource(value, { persist = true, refresh = true } = {}) {
       downloadError.hidden = false;
       toggleDownload(false);
     });
+}
+
+function disableReleaseArtworkOption(disabled) {
+  if (!artworkReleaseInput) {
+    return;
+  }
+  artworkReleaseInput.disabled = Boolean(disabled);
+  if (artworkReleaseLabel) {
+    artworkReleaseLabel.setAttribute('aria-disabled', String(Boolean(disabled)));
+    artworkReleaseLabel.classList.toggle('is-disabled', Boolean(disabled));
+  }
+  if (disabled && state.artworkSource !== 'artist') {
+    setArtworkSource('artist', { persist: false, refresh: false });
+  }
 }
 
 function handleArtworkTransformChange() {
@@ -877,13 +992,33 @@ async function recordWrappedGenerated() {
 async function generateWrapped(event) {
   event.preventDefault();
   await ensureClientConfigLoaded();
-  const username = usernameField.value.trim();
+  const selectedService = getSelectedService();
+  const usernameInput = selectedService === 'navidrome' ? navidromeUsernameInput : usernameField;
+  const username = usernameInput ? usernameInput.value.trim() : '';
   if (!username) {
-    setStatus('Enter a ListenBrainz username to get started.', 'error');
+    const message = selectedService === 'navidrome'
+      ? 'Enter your Navidrome username to get started.'
+      : 'Enter a ListenBrainz username to get started.';
+    setStatus(message, 'error');
     return;
   }
 
-  const selectedService = serviceSelector.getValue();
+  let navidromeCredentials = null;
+  if (selectedService === 'navidrome') {
+    try {
+      navidromeCredentials = readNavidromeCredentials(username);
+    } catch (credentialError) {
+      setStatus(credentialError.message, 'error');
+      return;
+    }
+    state.navidromeClient = new NavidromeClient(
+      navidromeCredentials.serverUrl,
+      username,
+      navidromeCredentials.password,
+    );
+    setStatus('Navidrome: scanning your library locally. This can take a minute for big collections.');
+  }
+
   const hasExisting = Boolean(state.generatedData);
   const sameProfile = hasExisting
     && state.generatedData.username === username
@@ -930,7 +1065,11 @@ async function generateWrapped(event) {
     sectionsToRefresh = [...ALL_SECTIONS];
   }
 
-  if (!ensureTurnstileTokenAvailable()) {
+  if (selectedService === 'navidrome' && sectionsToRefresh.some((section) => section !== 'image')) {
+    state.navidromeStats = null;
+  }
+
+  if (selectedService !== 'navidrome' && !ensureTurnstileTokenAvailable()) {
     setStatus('Complete the verification challenge before generating.', 'error');
     return;
   }
@@ -1069,6 +1208,12 @@ async function uploadArtworkToServer(file) {
 }
 
 async function loadCoverArt(username) {
+  if (isNavidromeSelected()) {
+    if (state.customArtworkActive && state.customArtworkUrl) {
+      return applyCustomArtwork();
+    }
+    return loadNavidromeCoverArt();
+  }
   await ensureClientConfigLoaded();
   if (state.customArtworkActive && state.customArtworkUrl) {
     if (state.coverObjectUrl) {
@@ -1136,7 +1281,57 @@ async function loadCoverArt(username) {
   }
 }
 
+async function loadNavidromeCoverArt() {
+  if (!state.navidromeClient || !state.navidromeStats) {
+    await loadImage(artistImg, BACKGROUND_SOURCES.black);
+    return false;
+  }
+  setArtworkEditorEnabled(false);
+  if (state.coverObjectUrl) {
+    URL.revokeObjectURL(state.coverObjectUrl);
+    state.coverObjectUrl = null;
+  }
+  const topAlbums = Array.isArray(state.navidromeStats.topAlbumsByPlaycount)
+    ? state.navidromeStats.topAlbumsByPlaycount
+    : [];
+  const topSongs = Array.isArray(state.navidromeStats.topSongsByPlaycount)
+    ? state.navidromeStats.topSongsByPlaycount
+    : [];
+  const coverSource = topAlbums[0] || topSongs[0] || {};
+  const coverId = coverSource.coverArtId || coverSource.id || coverSource.albumId;
+  if (!coverId) {
+    await loadImage(artistImg, BACKGROUND_SOURCES.black);
+    return false;
+  }
+  try {
+    const blob = await state.navidromeClient.fetchCoverArt(coverId);
+    if (!blob) {
+      throw new Error('Empty cover art response');
+    }
+    state.coverObjectUrl = URL.createObjectURL(blob);
+    const loaded = await loadImage(artistImg, state.coverObjectUrl);
+    if (!loaded) {
+      throw new Error('Cover art failed to load');
+    }
+    return true;
+  } catch (error) {
+    console.error('Unable to load Navidrome cover art', error);
+    await loadImage(artistImg, BACKGROUND_SOURCES.black);
+    return false;
+  }
+}
+
 async function updateSections(username, sections) {
+  if (isNavidromeSelected()) {
+    await updateNavidromeSections(sections);
+    refreshSectionDisplays();
+    return;
+  }
+  await updateListenBrainzSections(username, sections);
+  refreshSectionDisplays();
+}
+
+async function updateListenBrainzSections(username, sections) {
   const queue = [];
 
   if (sections.includes('artists')) {
@@ -1199,6 +1394,66 @@ async function updateSections(username, sections) {
     listenTimeEl.textContent = ensureMinutesLabel(state.generatedData.minutes);
   }
   if (!sections.includes('genre') && typeof state.generatedData.genre === 'string') {
+    topGenreEl.textContent = normaliseGenreLabel(state.generatedData.genre);
+  }
+}
+
+async function updateNavidromeSections(sections) {
+  if (!state.navidromeClient) {
+    throw new Error('Navidrome connection unavailable. Enter your server details again.');
+  }
+  const needsStats = !state.navidromeStats || sections.some((section) => section !== 'image');
+  if (needsStats) {
+    state.navidromeStats = await state.navidromeClient.stats((percent, message, step) => {
+      const pct = Number.isFinite(percent) ? `${Math.round(percent)}%` : '';
+      const prefix = step ? `${step}: ` : '';
+      setStatus(`Navidrome: ${prefix}${message} ${pct}`.trim());
+    });
+  }
+  const stats = state.navidromeStats;
+  if (!stats) {
+    throw new Error('Navidrome stats unavailable.');
+  }
+  if (sections.includes('artists') || !Array.isArray(state.generatedData.artists)) {
+    state.generatedData.artists = (stats.topArtistsByPlays || [])
+      .slice(0, 5)
+      .map((entry) => (Array.isArray(entry) ? entry[0] : entry) || 'Unknown artist');
+  }
+  if (sections.includes('tracks') || !Array.isArray(state.generatedData.tracks)) {
+    state.generatedData.tracks = (stats.topSongsByPlaycount || [])
+      .slice(0, 5)
+      .map((song) => song.title || 'Unknown track');
+  }
+  if (sections.includes('time') || typeof state.generatedData.minutes !== 'string') {
+    const totalMinutes = Math.max(0, Math.round((stats.listeningTime || 0) / 60));
+    state.generatedData.minutes = totalMinutes.toLocaleString();
+  }
+  if (sections.includes('genre') || typeof state.generatedData.genre !== 'string') {
+    const topGenreEntry = Array.isArray(stats.albumBasedStats?.topGenresByPlays)
+      ? stats.albumBasedStats.topGenresByPlays[0]
+      : null;
+    state.generatedData.genre = (topGenreEntry && topGenreEntry[0]) || 'No genre';
+  }
+  if (sections.includes('image')) {
+    if (state.customArtworkActive && state.customArtworkUrl) {
+      state.isCoverReady = await applyCustomArtwork();
+    } else {
+      state.isCoverReady = await loadNavidromeCoverArt();
+    }
+  }
+}
+
+function refreshSectionDisplays() {
+  if (Array.isArray(state.generatedData.artists)) {
+    topArtistsEl.textContent = formatRankedList(state.generatedData.artists);
+  }
+  if (Array.isArray(state.generatedData.tracks)) {
+    topTracksEl.textContent = formatRankedList(state.generatedData.tracks);
+  }
+  if (typeof state.generatedData.minutes === 'string') {
+    listenTimeEl.textContent = ensureMinutesLabel(state.generatedData.minutes);
+  }
+  if (typeof state.generatedData.genre === 'string') {
     topGenreEl.textContent = normaliseGenreLabel(state.generatedData.genre);
   }
 }

@@ -200,7 +200,9 @@ p {
   color: var(--text-muted);
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="url"],
+input[type="password"] {
   flex: 1 1 220px;
   padding: 0.85rem 1rem;
   border-radius: 10px;
@@ -211,7 +213,9 @@ input[type="text"] {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="url"]:focus,
+input[type="password"]:focus {
   border-color: var(--accent);
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -230,6 +234,28 @@ select {
 .service-select {
   position: relative;
   width: 100%;
+}
+
+.service-fields {
+  padding: 1.25rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 209, 0.35);
+  background: rgba(8, 13, 24, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.service-fields__description {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.service-fields__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 .service-select__toggle {
@@ -363,6 +389,15 @@ select {
   gap: 0.4rem;
   font-size: 0.95rem;
   color: var(--text);
+}
+
+.artwork-source__option.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.artwork-source__option.is-disabled input {
+  pointer-events: none;
 }
 
 .artwork-source__option input[type="radio"] {

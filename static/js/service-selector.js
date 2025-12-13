@@ -24,7 +24,11 @@ export function createServiceSelector() {
       return;
     }
     if (serviceInput) {
+      const previousValue = serviceInput.value;
       serviceInput.value = value;
+      if (previousValue !== value) {
+        serviceInput.dispatchEvent(new CustomEvent('servicechange', { detail: { value } }));
+      }
     }
     if (serviceCurrentLabel) {
       serviceCurrentLabel.textContent = labelText || getServiceLabel(value);

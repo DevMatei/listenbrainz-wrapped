@@ -51,7 +51,7 @@
             tracks, listening time, and favourite genre from the last 12 months.
           </p>
           <form id="wrapped-form" class="form" autocomplete="off" novalidate>
-            <label class="form__label" for="username">ListenBrainz username</label>
+            <label class="form__label" id="username-label" for="username">ListenBrainz username</label>
             <div class="form__field-group">
               <input
                 id="username"
@@ -61,6 +61,15 @@
                 required
                 minlength="2"
                 autocomplete="off"
+              >
+              <input
+                id="navidrome-username"
+                name="navidrome-username"
+                type="text"
+                placeholder="e.g. alice"
+                autocomplete="username"
+                minlength="2"
+                hidden
               >
               <button id="submit" type="submit" class="btn">Generate</button>
             </div>
@@ -145,21 +154,48 @@
                   <li>
                     <button
                       type="button"
-                      class="service-select__option service-select__option--disabled"
+                      class="service-select__option"
                       role="option"
-                      aria-disabled="true"
                       data-value="navidrome"
                       data-label="Navidrome"
                       data-dropdown-option
                     >
                       Navidrome
-                      <span class="service-select__tooltip" role="tooltip">In progress :)</span>
                     </button>
                   </li>
                 </ul>
                 <input type="hidden" id="service" name="service" value="listenbrainz">
               </div>
             </div>
+          </div>
+          <div id="navidrome-fields" class="service-fields service-fields--navidrome" hidden>
+            <p class="service-fields__description">
+              Connect directly to your Navidrome server. Everything runs in your browser; credentials never leave this page.
+            </p>
+            <label class="form__label" for="navidrome-server">Navidrome server URL</label>
+            <div class="form__field-group">
+              <input
+                id="navidrome-server"
+                name="navidrome-server"
+                type="url"
+                placeholder="https://navidrome.example.com"
+                autocomplete="url"
+                inputmode="url"
+              >
+            </div>
+            <label class="form__label" for="navidrome-password">Navidrome password or app token</label>
+            <div class="form__field-group">
+              <input
+                id="navidrome-password"
+                name="navidrome-password"
+                type="password"
+                placeholder="Stored locally — never shared"
+                autocomplete="current-password"
+              >
+            </div>
+            <p class="service-fields__hint">
+              Use the same credentials you log in with, or create an app-specific token. Requests are sent via the Subsonic API to your server.
+            </p>
           </div>
           <div class="actions">
             <button id="download" type="button" class="btn btn--secondary" aria-disabled="true">
