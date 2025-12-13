@@ -2,6 +2,10 @@ import { md5 } from './md5.js';
 
 const API_VERSION = '1.16.1';
 const CLIENT_ID = 'listenbrainz-wrapped';
+const NAVIDROME_ALBUM_PAGE_SIZE = 500;
+const NAVIDROME_ALBUM_DELAY_MS = 150;
+const NAVIDROME_DETAIL_DELAY_MS = 80;
+const MAX_ALBUMS_TO_SCAN = 2000;
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -197,10 +201,10 @@ export class NavidromeClient {
     }
 
     progressCallback(0, 'Starting album scan', 'albums');
-    while (true) { // eslint-disable-line no-constant-condition
+    while (albums.length < MAX_ALBUMS_TO_SCAN) {
       const payload = await this._requestJson('getAlbumList2', {
         type: 'alphabeticalByName',
-        size: 500,
+        size: NAVIDROME_ALBUM_PAGE_SIZE,
         offset,
       });
       const batch = payload?.albumList2?.album || [];
@@ -209,13 +213,22 @@ export class NavidromeClient {
       }
       albums.push(...batch);
       offset += batch.length;
-      progressCallback(10 + (albums.length / 5000) * 20, `Fetched ${albums.length} albums`, 'albums');
-      await delay(100);
+      const ratio = Math.min(albums.length / MAX_ALBUMS_TO_SCAN, 1);
+      progressCallback(
+        10 + ratio * 20,
+        `Fetched ${Math.min(albums.length, MAX_ALBUMS_TO_SCAN)} albums`,
+        'albums',
+      );
+      if (batch.length < NAVIDROME_ALBUM_PAGE_SIZE || albums.length >= MAX_ALBUMS_TO_SCAN) {
+        break;
+      }
+      await delay(NAVIDROME_ALBUM_DELAY_MS);
     }
 
-    progressCallback(30, `Processing ${albums.length} albums`, 'albums');
+    const albumsToProcess = Math.min(albums.length, MAX_ALBUMS_TO_SCAN);
+    progressCallback(30, `Processing ${albumsToProcess} albums`, 'albums');
 
-    for (let i = 0; i < albums.length; i += 1) {
+    for (let i = 0; i < albumsToProcess; i += 1) {
       const albumPayload = await this._requestJson('getAlbum', { id: albums[i].id });
       const album = albumPayload?.album;
       if (!album) {
@@ -306,10 +319,15 @@ export class NavidromeClient {
         }
       }
 
-      if (i % 50 === 0) {
-        progressCallback(30 + (i / albums.length) * 60, `Album ${i}/${albums.length}`, 'albums');
+      if (albumsToProcess && (i % 50 === 0 || i === albumsToProcess - 1)) {
+        const ratio = Math.min((i + 1) / albumsToProcess, 1);
+        progressCallback(30 + ratio * 55, `Album ${i + 1}/${albumsToProcess}`, 'albums');
       }
-      await delay(50);
+      await delay(NAVIDROME_DETAIL_DELAY_MS);
+    }
+
+    if (albums.length > MAX_ALBUMS_TO_SCAN) {
+      progressCallback(85, `Sampled ${MAX_ALBUMS_TO_SCAN} albums for performance`, 'wrap');
     }
 
     const avgBitrate = bitrateCount ? totalBitrate / bitrateCount : 0;
