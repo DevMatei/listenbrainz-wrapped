@@ -11,7 +11,7 @@ export async function collectNavidromeStats(api, progressCallback = () => {}) {
   const songs = [];
   const artistPlays = new Map();
   const artistIdToName = new Map();
-  const genrePlayCounts = {};
+  const genrePlayCounts = Object.create(null);
   let offset = 0;
   let totalSec = 0;
 
@@ -106,8 +106,8 @@ export async function collectNavidromeStats(api, progressCallback = () => {}) {
   progressCallback(90, 'Building final objects', 'wrap');
 
   const topArtists = [...artistPlays.entries()]
-    .sort((a, b) => b[1] - a[1])
     .filter(([id]) => (artistIdToName.get(id) || id).toLowerCase() !== 'various artists')
+    .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([id, plays]) => [artistIdToName.get(id) || id, plays]);
 
