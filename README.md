@@ -10,7 +10,7 @@ Spotify Wrapped style recap generator for ListenBrainz, Last.fm, and Navidrome b
 > New templates for 2025 added!
 
  
-<img width="1857" height="983" alt="Make a Wrapped — shareable stats for your scrobbles" src="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c" />
+<img width="1857" height="983" alt="Make a Wrapped — shareable stats for your scrobbles" src="https://github.com/user-attachments/assets/56c0dcd2-b111-4978-ac1f-2ae802f00237" />
 
 ## 🌐 website
 
