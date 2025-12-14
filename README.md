@@ -5,7 +5,7 @@ Spotify Wrapped style recap generator for ListenBrainz, Last.fm, and Navidrome b
 > [!IMPORTANT]
 > Website should be back now, if you have any issues while using the website please make a new [GitHub issue](https://github.com/DevMatei/listenbrainz-wrapped/issues/new/choose).
 >
-> New templates for 2025 added!!
+> New templates for 2025 added!
 
  
 <img width="1857" height="983" alt="Make a Wrapped — shareable stats for your scrobbles" src="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c" />
@@ -55,28 +55,6 @@ or use the docker-compose.yml file (make sure to change the port to the one you 
 sudo docker compose up -d
 ```
 
-### 🧠 production
-
-* reverse proxy + https
-* `APP_TRUST_PROXY_HEADERS=1` if proxying
-* `APP_RATE_LIMIT_SALT` = random string
-* 1 worker per instance unless you know what you’re doing
-* add `FLASK_DEBUG=0`, `PYTHONUNBUFFERED=1`, `LOG_LEVEL=info`
-
-## 🛡️ Cloudflare Turnstile
-
-Put a human verification step in front of the expensive stats calls without any extra middleware:
-
-```
-TURNSTILE_SITE_KEY=pk_live_xxx
-TURNSTILE_SECRET_KEY=sk_live_xxx
-TURNSTILE_CACHE_TTL=120   # optional server-side cache window (seconds)
-TURNSTILE_TIMEOUT=5       # optional verification timeout (seconds)
-```
-
-When both keys are present the frontend automatically renders the Turnstile widget, waits for a token, and attaches it to every stats/image/upload request. The backend validates tokens (with short-lived caching) before touching ListenBrainz/Last.fm/MusicBrainz or storing artwork, so bots get blocked but legit users only see a lightweight checkbox.
-
-
 ## ⚙️ config
 
 ### core
@@ -111,21 +89,17 @@ Share [wrapped.devmatei.com](https://wrapped.devmatei.com), flex your open music
 
 I’m Matei (aka [DevMatei](https://devmatei.com)) — a full-stack dev who loves shipping playful web tools, tinkering with AI and homelab setups, streaming on Twitch, and yes, drinking an obscene amount of tea. If you want to talk projects, self-hosting, or just nerd out, hit the email on my site or ping me on socials.
 
-### frontend
-
-uses [anime.js](https://animejs.com/) cuz it’s smooth as hell
-
 ## 🤝 contributing
 
 See [CONTRIBUTING.yml](./CONTRIBUTING.yml) for setup steps, coding style notes, and the pull-request checklist. TL;DR: keep PRs focused, run `python -m py_compile wrapped-fm.py`, and drop screenshots for any UI tweaks.
 
 ## 🧩 to-do
 
-* [ ] try to set some more security features?
+* [x] try to set some more security features?
 * [x] faster wrapped rendering - im limited by the api speeds so cant go under 33s ish
 * [x] make code modular and readable (maybe)
 
-originally made for last.fm by [jeff parla](https://github.com/parlajatwit) <3
+originally made only for last.fm by [jeff parla](https://github.com/parlajatwit) <3
 
 ## 📜 license
 

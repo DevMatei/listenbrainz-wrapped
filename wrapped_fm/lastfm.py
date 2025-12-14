@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -116,7 +117,6 @@ def _normalise_duration(value: Optional[str]) -> int:
         duration = int(value)
         if duration <= 0:
             raise ValueError
-        # Last.fm track.getInfo returns milliseconds.
         if duration < 1000:
             duration *= 1000
     except (TypeError, ValueError):
@@ -216,29 +216,8 @@ def _normalise_tag(name: str) -> str:
     return normalised
 
 
-def get_lastfm_top_genre(username: str) -> str:
-    payload = _call_lastfm("user.getTopTags", {"user": username})
-    tags = payload.get("toptags", {}).get("tag") or []
-    if not isinstance(tags, list):
-        return "No genre"
-    for tag in tags[:MAX_TAG_RESULTS]:
-        if not isinstance(tag, dict):
-            continue
-        name = tag.get("name")
-        if not isinstance(name, str):
-            continue
-        normalised = _normalise_tag(name)
-        if not normalised or normalised in IGNORED_TAGS:
-            continue
-        title = normalised.title()
-        if POPULAR_GENRES and normalised in POPULAR_GENRES:
-            return title
-        if title:
-            return title
-    return "No genre"
-
-
-def get_lastfm_artist_genre(artist_name: str) -> str:
+@lru_cache(maxsize=512)
+def _fetch_artist_tags(artist_name: str) -> List[Tuple[str, int]]:
     payload = _call_lastfm(
         "artist.getTopTags",
         {
@@ -247,7 +226,8 @@ def get_lastfm_artist_genre(artist_name: str) -> str:
     )
     tags = payload.get("toptags", {}).get("tag") or []
     if not isinstance(tags, list):
-        return "No genre"
+        return []
+    results: List[Tuple[str, int]] = []
     for tag in tags[:MAX_TAG_RESULTS]:
         if not isinstance(tag, dict):
             continue
@@ -257,5 +237,46 @@ def get_lastfm_artist_genre(artist_name: str) -> str:
         normalised = _normalise_tag(name)
         if not normalised or normalised in IGNORED_TAGS:
             continue
-        return normalised.title()
-    return "No genre"
+        try:
+            weight = int(tag.get("count", 0))
+        except (TypeError, ValueError):
+            weight = 0
+        if weight <= 0:
+            weight = 1
+        results.append((normalised, weight))
+    return results
+
+
+def _select_tag_from_counters(preferred: Counter, fallback: Counter) -> str:
+    counter = preferred if preferred else fallback
+    if not counter:
+        return "No genre"
+    tag, _ = counter.most_common(1)[0]
+    return tag.title()
+
+
+def get_lastfm_top_genre(username: str) -> str:
+    artists = get_lastfm_top_artists(username, 10)
+    if not artists:
+        return "No genre"
+    popular_counter: Counter[str] = Counter()
+    fallback_counter: Counter[str] = Counter()
+    for artist in artists:
+        for tag, weight in _fetch_artist_tags(artist):
+            fallback_counter[tag] += weight
+            if tag in POPULAR_GENRES:
+                popular_counter[tag] += weight
+    return _select_tag_from_counters(popular_counter, fallback_counter)
+
+
+def get_lastfm_artist_genre(artist_name: str) -> str:
+    tags = _fetch_artist_tags(artist_name)
+    if not tags:
+        return "No genre"
+    popular_counter: Counter[str] = Counter()
+    fallback_counter: Counter[str] = Counter()
+    for tag, weight in tags:
+        fallback_counter[tag] += weight
+        if tag in POPULAR_GENRES:
+            popular_counter[tag] += weight
+    return _select_tag_from_counters(popular_counter, fallback_counter)

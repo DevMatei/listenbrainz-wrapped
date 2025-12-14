@@ -22,8 +22,8 @@ MUSICBRAINZ_API = os.getenv("MUSICBRAINZ_API", "https://musicbrainz.org/ws/2")
 COVER_ART_API = os.getenv("COVER_ART_API", "https://coverartarchive.org/release")
 LISTEN_RANGE = os.getenv("LISTENBRAINZ_RANGE", "year")
 AVERAGE_TRACK_LENGTH_MINUTES = float(os.getenv("AVERAGE_TRACK_LENGTH_MINUTES", "3.5"))
-# HTTP_TIMEOUT split: 5s connect, 5s read (per retry); set to 6s for slightly faster failure detection
-HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "6"))
+# HTTP_TIMEOUT split: 5s connect, 5s read (per retry); default bumped for slower APIs
+HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "10"))
 COVER_ART_LOOKUP_LIMIT = int(os.getenv("COVER_ART_LOOKUP_LIMIT", "15"))
 AVERAGE_TRACK_SAMPLE_LIMIT = int(os.getenv("AVERAGE_TRACK_SAMPLE_LIMIT", "50"))
 MAX_TOP_RESULTS = int(os.getenv("APP_MAX_TOP_RESULTS", "15"))

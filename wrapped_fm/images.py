@@ -36,6 +36,7 @@ from .musicbrainz import (
     fetch_artist_details,
     lookup_wikidata_image,
     normalise_image_resource,
+    search_artist_mbid,
 )
 
 logger = logging.getLogger("wrapped_fm")
@@ -230,7 +231,11 @@ def _download_lastfm_artist_image(artist_name: str, artist_mbid: Optional[str]) 
 def _collect_artist_candidates(username: str, *, service: str = "listenbrainz") -> List[Tuple[str, Optional[str]]]:
     if service == "lastfm":
         artists = get_lastfm_top_artists(username, COVER_ART_LOOKUP_LIMIT)
-        return [(name, None) for name in artists]
+        candidates: List[Tuple[str, Optional[str]]] = []
+        for name in artists:
+            mbid = search_artist_mbid(name) or None
+            candidates.append((name, mbid))
+        return candidates
 
     artists = get_top_artists_payload(username, COVER_ART_LOOKUP_LIMIT)
     candidates: List[Tuple[str, Optional[str]]] = []
