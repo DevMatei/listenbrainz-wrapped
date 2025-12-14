@@ -28,6 +28,7 @@ export const SECTION_LABELS = {
 
 export const SERVICE_LABELS = {
   listenbrainz: 'ListenBrainz',
+  lastfm: 'Last.fm',
   navidrome: 'Navidrome',
 };
 

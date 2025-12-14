@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>ListenBrainz Wrapped — shareable stats for your awesome scrobbles</title>
-    <meta name="description" content="Generate Spotify Wrapped style posters for your ListenBrainz scrobbles. Free, open-source, and runnable on any homelab.">
-    <meta name="keywords" content="ListenBrainz, Spotify Wrapped alternative, music stats, open source, scrobbles, devmatei">
+    <title>Make a Wrapped — shareable stats from ListenBrainz, Last.fm, or Navidrome</title>
+    <meta name="description" content="Make a Wrapped generates Spotify Wrapped style posters from ListenBrainz, Last.fm, or Navidrome libraries. Free, open source, and runnable on any homelab.">
+    <meta name="keywords" content="Make a Wrapped, ListenBrainz, Last.fm, Navidrome, Spotify Wrapped alternative, music stats, open source, scrobbles, devmatei">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://wrapped.devmatei.com/">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="ListenBrainz Wrapped">
-    <meta property="og:description" content="Create a beautiful poster of your top ListenBrainz artists, tracks, genres, and listening time.">
+    <meta property="og:title" content="Make a Wrapped">
+    <meta property="og:description" content="Create a beautiful poster of your top artists, tracks, genres, and listening time across ListenBrainz, Last.fm, or Navidrome.">
     <meta property="og:url" content="https://wrapped.devmatei.com/">
     <meta property="og:image" content="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="ListenBrainz Wrapped">
-    <meta name="twitter:description" content="Open-source ListenBrainz Wrapped generator with Last.fm artwork and custom uploads.">
+    <meta name="twitter:title" content="Make a Wrapped">
+    <meta name="twitter:description" content="Open-source Wrapped generator for ListenBrainz, Last.fm, and Navidrome with Last.fm artwork and custom uploads.">
     <meta name="twitter:image" content="https://github.com/user-attachments/assets/ee64a7f1-6bbc-4af3-9a1b-3129de9c1f9c">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="alternate icon" href="img/pink.png" type="image/png">
@@ -25,11 +25,11 @@
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "name": "ListenBrainz Wrapped",
+        "name": "Make a Wrapped",
         "applicationCategory": "MusicApplication",
         "operatingSystem": "Cross-platform",
         "url": "https://wrapped.devmatei.com/",
-        "description": "Generate ListenBrainz Spotify Wrapped style recaps with custom artwork and Last.fm imagery.",
+        "description": "Generate Spotify Wrapped style recaps from ListenBrainz, Last.fm, or Navidrome with custom artwork and Last.fm imagery.",
         "creator": {
           "@type": "Person",
           "name": "Matei"
@@ -45,13 +45,13 @@
     <main class="page">
       <section class="card card--intro">
         <div class="card__body">
-          <h1>ListenBrainz Wrapped</h1>
+          <h1>Make a Wrapped</h1>
           <p class="intro-copy">
-            Turn your ListenBrainz scrobbles into a shareable poster with your top artists,
+            Turn your ListenBrainz, Last.fm, or Navidrome listening history into a shareable poster with your top artists,
             tracks, listening time, and favourite genre from the last 12 months.
           </p>
           <form id="wrapped-form" class="form" autocomplete="off" novalidate>
-            <label class="form__label" id="username-label" for="username">ListenBrainz username</label>
+            <label class="form__label" id="username-label" for="username">Music username</label>
             <div class="form__field-group">
               <input
                 id="username"
@@ -156,6 +156,18 @@
                       type="button"
                       class="service-select__option"
                       role="option"
+                      data-value="lastfm"
+                      data-label="Last.fm"
+                      data-dropdown-option
+                    >
+                      Last.fm
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      class="service-select__option"
+                      role="option"
                       data-value="navidrome"
                       data-label="Navidrome"
                       data-dropdown-option
@@ -233,7 +245,7 @@
                 </label>
                 <label class="artwork-source__option">
                   <input type="radio" name="artwork-source" value="release">
-                  <span>Top release cover (ListenBrainz)</span>
+                  <span>Top release cover (ListenBrainz only)</span>
                 </label>
               </div>
             </div>
@@ -307,11 +319,11 @@
         </div>
       </section>
 
-      <section class="card card--purpose" aria-label="Why ListenBrainz Wrapped exists">
+      <section class="card card--purpose" aria-label="Why Make a Wrapped exists">
         <div class="card__body">
           <h2>Why this exists</h2>
           <p>
-            Yeah, the idea is for people whose friends all use Spotify and post their Wrapped. When you share a ListenBrainz one everyone replies “wait, what’s that?”-so this bridges the gap. I swapped Spotify for Navidrome but still wanted that wrapped-moment vibe.
+            Yeah, the idea is for people whose friends all use Spotify and post their Wrapped. When you share a ListenBrainz or Last.fm one everyone replies “wait, what’s that?”—so this bridges the gap. I swapped Spotify for Navidrome but still wanted that wrapped-moment vibe.
           </p>
           <p>
             Share <a href="https://wrapped.devmatei.com" target="_blank" rel="noopener noreferrer">wrapped.devmatei.com</a> for a cookie 🍪

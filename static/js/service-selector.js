@@ -4,7 +4,7 @@ function getServiceLabel(key) {
   if (SERVICE_LABELS[key]) {
     return SERVICE_LABELS[key];
   }
-  return key ? `${key.charAt(0).toUpperCase()}${key.slice(1)}` : 'ListenBrainz';
+  return key ? `${key.charAt(0).toUpperCase()}${key.slice(1)}` : 'Make a Wrapped';
 }
 
 export function createServiceSelector() {

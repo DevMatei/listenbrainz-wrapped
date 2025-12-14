@@ -29,12 +29,14 @@ from .listenbrainz import (
     get_top_tracks_payload,
     normalise_count,
 )
+from .lastfm import get_lastfm_top_artists
 from .musicbrainz import (
     extract_artist_mbid,
     extract_wikidata_qid,
     fetch_artist_details,
     lookup_wikidata_image,
     normalise_image_resource,
+    search_artist_mbid,
 )
 
 logger = logging.getLogger("wrapped_fm")
@@ -226,7 +228,15 @@ def _download_lastfm_artist_image(artist_name: str, artist_mbid: Optional[str]) 
     return None
 
 
-def _collect_artist_candidates(username: str) -> List[Tuple[str, Optional[str]]]:
+def _collect_artist_candidates(username: str, *, service: str = "listenbrainz") -> List[Tuple[str, Optional[str]]]:
+    if service == "lastfm":
+        artists = get_lastfm_top_artists(username, COVER_ART_LOOKUP_LIMIT)
+        candidates: List[Tuple[str, Optional[str]]] = []
+        for name in artists:
+            mbid = search_artist_mbid(name) or None
+            candidates.append((name, mbid))
+        return candidates
+
     artists = get_top_artists_payload(username, COVER_ART_LOOKUP_LIMIT)
     candidates: List[Tuple[str, Optional[str]]] = []
     for artist in artists:
@@ -237,7 +247,9 @@ def _collect_artist_candidates(username: str) -> List[Tuple[str, Optional[str]]]
     return candidates
 
 
-def _collect_cover_candidates(username: str) -> List[Tuple[str, Optional[str]]]:
+def _collect_cover_candidates(username: str, *, service: str = "listenbrainz") -> List[Tuple[str, Optional[str]]]:
+    if service != "listenbrainz":
+        return []
     weighted_candidates: Dict[Tuple[str, Optional[str]], int] = {}
 
     def add_candidate(
@@ -316,7 +328,7 @@ def _download_cover_art(release_mbid: str, caa_release_mbid: Optional[str]) -> O
     return None
 
 
-def fetch_top_artist_image(username: str, *, preferred_source: str = "artist") -> ImageResult:
+def fetch_top_artist_image(username: str, *, preferred_source: str = "artist", service: str = "listenbrainz") -> ImageResult:
     queue_position = _enter_image_queue()
     if queue_position is None:
         raise ImageQueueFullError
@@ -327,7 +339,7 @@ def fetch_top_artist_image(username: str, *, preferred_source: str = "artist") -
 
     try:
         preference_order = []
-        if preferred_source == "release":
+        if preferred_source == "release" and service == "listenbrainz":
             preference_order = ["release", "artist"]
         else:
             preference_order = ["artist", "release"]
@@ -335,7 +347,7 @@ def fetch_top_artist_image(username: str, *, preferred_source: str = "artist") -
         artist_candidates: List[Tuple[str, Optional[str]]] = []
 
         for source in preference_order:
-            if source == "release":
+            if source == "release" and service == "listenbrainz":
                 for release_mbid, caa_release_mbid in _collect_cover_candidates(username):
                     art = _download_cover_art(release_mbid, caa_release_mbid)
                     if art:
@@ -343,7 +355,7 @@ def fetch_top_artist_image(username: str, *, preferred_source: str = "artist") -
                         return ImageResult(content_type or "image/jpeg", content, max(queue_position - 1, 0))
             else:
                 if not artist_candidates:
-                    artist_candidates = _collect_artist_candidates(username)
+                    artist_candidates = _collect_artist_candidates(username, service=service)
                 for artist_name, artist_mbid in artist_candidates:
                     art = _download_lastfm_artist_image(artist_name, artist_mbid)
                     if art:

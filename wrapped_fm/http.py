@@ -99,7 +99,7 @@ def request_with_handling(
         try:
             response = session.get(url, params=params, timeout=HTTP_TIMEOUT)
             return response
-        except RequestException as exc:  # pragma: no cover - network failure
+        except RequestException as exc:  
             last_exc = exc
             time.sleep(0.3 * (attempt + 1))
     abort(502, description=f"Upstream request failed: {last_exc}")
