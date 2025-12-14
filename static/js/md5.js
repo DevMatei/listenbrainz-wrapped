@@ -1,100 +1,153 @@
-// Minimal MD5 implementation adapted for ES modules.
-export function md5(inputString) {
-  function rotateLeft(value, shift) {
-    return (value << shift) | (value >>> (32 - shift));
-  }
+// Minimal MD5 implementation adapted for ES modules with UTF-8 support and zeroisation of intermediates.
+const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
-  function addUnsigned(x, y) {
-    const x4 = x & 0x40000000;
-    const y4 = y & 0x40000000;
-    const x8 = x & 0x80000000;
-    const y8 = y & 0x80000000;
-    let result = (x & 0x3fffffff) + (y & 0x3fffffff);
-    if (x4 & y4) {
-      return result ^ 0x80000000 ^ x8 ^ y8;
+function encodeToUtf8(value) {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (typeof value === 'string') {
+    if (textEncoder) {
+      return textEncoder.encode(value);
     }
-    if (x4 | y4) {
-      if (result & 0x40000000) {
-        return result ^ 0xc0000000 ^ x8 ^ y8;
+    const bytes = [];
+    for (let i = 0; i < value.length; i += 1) {
+      let codePoint = value.charCodeAt(i);
+      if (codePoint >= 0xd800 && codePoint <= 0xdbff && i + 1 < value.length) {
+        const next = value.charCodeAt(i + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
+          i += 1;
+        }
       }
-      return result ^ 0x40000000 ^ x8 ^ y8;
+      if (codePoint <= 0x7f) {
+        bytes.push(codePoint);
+      } else if (codePoint <= 0x7ff) {
+        bytes.push((codePoint >> 6) | 0xc0, (codePoint & 0x3f) | 0x80);
+      } else if (codePoint <= 0xffff) {
+        bytes.push((codePoint >> 12) | 0xe0, ((codePoint >> 6) & 0x3f) | 0x80, (codePoint & 0x3f) | 0x80);
+      } else {
+        bytes.push(
+          (codePoint >> 18) | 0xf0,
+          ((codePoint >> 12) & 0x3f) | 0x80,
+          ((codePoint >> 6) & 0x3f) | 0x80,
+          (codePoint & 0x3f) | 0x80,
+        );
+      }
     }
-    return result ^ x8 ^ y8;
+    return Uint8Array.from(bytes);
   }
+  throw new TypeError('MD5 input must be a string, ArrayBuffer, or Uint8Array.');
+}
 
-  function F(x, y, z) {
-    return (x & y) | (~x & z);
-  }
-  function G(x, y, z) {
-    return (x & z) | (y & ~z);
-  }
-  function H(x, y, z) {
-    return x ^ y ^ z;
-  }
-  function I(x, y, z) {
-    return y ^ (x | ~z);
-  }
+function rotateLeft(value, shift) {
+  return (value << shift) | (value >>> (32 - shift));
+}
 
-  function FF(a, b, c, d, x, s, ac) {
-    a = addUnsigned(a, addUnsigned(addUnsigned(F(b, c, d), x), ac));
-    return addUnsigned(rotateLeft(a, s), b);
+function addUnsigned(x, y) {
+  const x4 = x & 0x40000000;
+  const y4 = y & 0x40000000;
+  const x8 = x & 0x80000000;
+  const y8 = y & 0x80000000;
+  let result = (x & 0x3fffffff) + (y & 0x3fffffff);
+  if (x4 & y4) {
+    return result ^ 0x80000000 ^ x8 ^ y8;
   }
-
-  function GG(a, b, c, d, x, s, ac) {
-    a = addUnsigned(a, addUnsigned(addUnsigned(G(b, c, d), x), ac));
-    return addUnsigned(rotateLeft(a, s), b);
-  }
-
-  function HH(a, b, c, d, x, s, ac) {
-    a = addUnsigned(a, addUnsigned(addUnsigned(H(b, c, d), x), ac));
-    return addUnsigned(rotateLeft(a, s), b);
-  }
-
-  function II(a, b, c, d, x, s, ac) {
-    a = addUnsigned(a, addUnsigned(addUnsigned(I(b, c, d), x), ac));
-    return addUnsigned(rotateLeft(a, s), b);
-  }
-
-  function convertToWordArray(str) {
-    const messageLength = str.length;
-    const numberOfWordsTemp1 = messageLength + 8;
-    const numberOfWordsTemp2 = (numberOfWordsTemp1 - (numberOfWordsTemp1 % 64)) / 64;
-    const numberOfWords = (numberOfWordsTemp2 + 1) * 16;
-    const wordArray = new Array(numberOfWords - 1);
-    let byteCount = 0;
-
-    while (byteCount < messageLength) {
-      const wordCount = (byteCount - (byteCount % 4)) / 4;
-      const bytePosition = (byteCount % 4) * 8;
-      wordArray[wordCount] = wordArray[wordCount] || 0;
-      wordArray[wordCount] |= str.charCodeAt(byteCount) << bytePosition;
-      byteCount += 1;
+  if (x4 | y4) {
+    if (result & 0x40000000) {
+      return result ^ 0xc0000000 ^ x8 ^ y8;
     }
+    return result ^ 0x40000000 ^ x8 ^ y8;
+  }
+  return result ^ x8 ^ y8;
+}
 
-    const wordCount = (byteCount - (byteCount % 4)) / 4;
+function F(x, y, z) {
+  return (x & y) | (~x & z);
+}
+
+function G(x, y, z) {
+  return (x & z) | (y & ~z);
+}
+
+function H(x, y, z) {
+  return x ^ y ^ z;
+}
+
+function I(x, y, z) {
+  return y ^ (x | ~z);
+}
+
+function FF(a, b, c, d, x, s, ac) {
+  a = addUnsigned(a, addUnsigned(addUnsigned(F(b, c, d), x), ac));
+  return addUnsigned(rotateLeft(a, s), b);
+}
+
+function GG(a, b, c, d, x, s, ac) {
+  a = addUnsigned(a, addUnsigned(addUnsigned(G(b, c, d), x), ac));
+  return addUnsigned(rotateLeft(a, s), b);
+}
+
+function HH(a, b, c, d, x, s, ac) {
+  a = addUnsigned(a, addUnsigned(addUnsigned(H(b, c, d), x), ac));
+  return addUnsigned(rotateLeft(a, s), b);
+}
+
+function II(a, b, c, d, x, s, ac) {
+  a = addUnsigned(a, addUnsigned(addUnsigned(I(b, c, d), x), ac));
+  return addUnsigned(rotateLeft(a, s), b);
+}
+
+function convertToWordArray(bytes) {
+  const messageLength = bytes.length;
+  const numberOfWordsTemp1 = messageLength + 8;
+  const numberOfWordsTemp2 = (numberOfWordsTemp1 - (numberOfWordsTemp1 % 64)) / 64;
+  const numberOfWords = (numberOfWordsTemp2 + 1) * 16;
+  const wordArray = new Uint32Array(numberOfWords);
+  let byteCount = 0;
+
+  while (byteCount < messageLength) {
+    const wordCount = (byteCount / 4) | 0;
     const bytePosition = (byteCount % 4) * 8;
-    wordArray[wordCount] = wordArray[wordCount] || 0;
-    wordArray[wordCount] |= 0x80 << bytePosition;
-    wordArray[numberOfWords - 2] = messageLength << 3;
-    wordArray[numberOfWords - 1] = messageLength >>> 29;
-    return wordArray;
+    wordArray[wordCount] |= bytes[byteCount] << bytePosition;
+    byteCount += 1;
   }
 
-  function wordToHex(value) {
-    let hex = '';
-    for (let count = 0; count <= 3; count += 1) {
-      const byte = (value >>> (count * 8)) & 255;
-      const temp = `0${byte.toString(16)}`;
-      hex += temp.substring(temp.length - 2, temp.length);
-    }
-    return hex;
+  const wordCount = (byteCount / 4) | 0;
+  const bytePosition = (byteCount % 4) * 8;
+  wordArray[wordCount] |= 0x80 << bytePosition;
+  wordArray[numberOfWords - 2] = messageLength << 3;
+  wordArray[numberOfWords - 1] = messageLength >>> 29;
+  return wordArray;
+}
+
+function wordToHex(value) {
+  let hex = '';
+  for (let count = 0; count <= 3; count += 1) {
+    const byte = (value >>> (count * 8)) & 255;
+    const temp = `0${byte.toString(16)}`;
+    hex += temp.substring(temp.length - 2, temp.length);
   }
+  return hex;
+}
+
+function secureZero(buffer) {
+  if (buffer && typeof buffer.fill === 'function') {
+    buffer.fill(0);
+  }
+}
+
+export function md5(value) {
+  const bytes = encodeToUtf8(value);
+  const wipeInput = typeof value === 'string' || value instanceof ArrayBuffer;
+  const x = convertToWordArray(bytes);
 
   let a = 0x67452301;
   let b = 0xefcdab89;
   let c = 0x98badcfe;
   let d = 0x10325476;
-  const x = convertToWordArray(inputString);
 
   for (let k = 0; k < x.length; k += 16) {
     const AA = a;
@@ -170,6 +223,11 @@ export function md5(inputString) {
     c = addUnsigned(c, CC);
     d = addUnsigned(d, DD);
   }
+
+  if (wipeInput && bytes.fill) {
+    bytes.fill(0);
+  }
+  secureZero(x);
 
   return (wordToHex(a) + wordToHex(b) + wordToHex(c) + wordToHex(d)).toLowerCase();
 }
