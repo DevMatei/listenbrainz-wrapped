@@ -3,6 +3,8 @@
 Spotify Wrapped style recap generator for ListenBrainz, Last.fm, and Navidrome built with Flask.
 
 > [!IMPORTANT]
+> Rebranded to Make a Wrapped from Listenbrainz wrapped.
+> 
 > Website should be back now, if you have any issues while using the website please make a new [GitHub issue](https://github.com/DevMatei/listenbrainz-wrapped/issues/new/choose).
 >
 > New templates for 2025 added!
