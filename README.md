@@ -18,8 +18,8 @@ https://wrapped.devmatei.com/
 
 * grabs data from ListenBrainz, Last.fm, Navidrome, MusicBrainz, Cover Art Archive, and Wikidata — all public, no tokens (except the optional Last.fm API key you already need for artwork)
 * artist art uses last.fm first, then falls back to musicbrainz/wikidata — and if that fails/you preffer another image, there’s a built-in editor so you can upload/zoom/position your own artwork (saved in local storage or temporarily on the server for 1 hour)
-* there are rate limits implimented so your server dosent get ddosed (i use cloudflare anyway) 
-* there’s a live counter of total wraps ever generated (don`t ask why it seemed cool tbh)
+* there are rate limits implemented so your server doesn't get DDoS'd (i use cloudflare anyway) 
+* there’s a live counter of total wraps ever generated (don't ask why it seemed cool tbh)
 * officially listed on the [ListenBrainz Enabled Applications](https://wiki.musicbrainz.org/ListenBrainz_Enabled_Applications) page :D 
 
 ## ⚡ quickstart
