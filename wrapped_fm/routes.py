@@ -39,12 +39,28 @@ from .listenbrainz import (
     get_top_tracks_payload,
     estimate_total_listen_minutes,
 )
+from .lastfm import (
+    estimate_lastfm_listen_minutes,
+    get_lastfm_artist_genre,
+    get_lastfm_top_albums,
+    get_lastfm_top_artists,
+    get_lastfm_top_genre,
+    get_lastfm_top_tracks,
+)
 from .metrics import increment_wrapped_count, read_wrapped_count
 from .rate_limiter import rate_limit
 from .temp_artwork import ArtworkExpiredError, ArtworkMissingError, fetch_artwork, store_artwork
 from .turnstile import require_turnstile
 
 bp = Blueprint("wrapped_routes", __name__)
+SUPPORTED_STATS_SERVICES = {"listenbrainz", "lastfm"}
+
+
+def _resolve_stats_service() -> str:
+    service = (request.args.get("service") or "listenbrainz").strip().lower()
+    if service not in SUPPORTED_STATS_SERVICES:
+        return "listenbrainz"
+    return service
 
 
 @bp.route("/")
@@ -136,8 +152,12 @@ def fetch_custom_artwork(token: str) -> Response:
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_albums(username: str, number: int) -> str:
     number = clamp_top_number(number)
-    releases = get_top_releases_payload(username, number)
-    names = [release.get("release_name", "Unknown Release") for release in releases]
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        names = get_lastfm_top_albums(username, number)
+    else:
+        releases = get_top_releases_payload(username, number)
+        names = [release.get("release_name", "Unknown Release") for release in releases]
     return format_ranked_lines(names)
 
 
@@ -146,8 +166,13 @@ def get_top_albums(username: str, number: int) -> str:
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_artists(username: str, number: int):
     number = clamp_top_number(number)
-    artists = get_top_artists_payload(username, number)
-    return jsonify([artist.get("artist_name", "Unknown artist") for artist in artists])
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        names = get_lastfm_top_artists(username, number)
+    else:
+        artists = get_top_artists_payload(username, number)
+        names = [artist.get("artist_name", "Unknown artist") for artist in artists]
+    return jsonify(names)
 
 
 @bp.route("/top/artists/<username>/<int:number>/formatted")
@@ -155,8 +180,12 @@ def get_top_artists(username: str, number: int):
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_artists_formatted(username: str, number: int) -> str:
     number = clamp_top_number(number)
-    artists = get_top_artists_payload(username, number)
-    names = [artist.get("artist_name", "Unknown artist") for artist in artists]
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        names = get_lastfm_top_artists(username, number)
+    else:
+        artists = get_top_artists_payload(username, number)
+        names = [artist.get("artist_name", "Unknown artist") for artist in artists]
     return format_ranked_lines(names)
 
 
@@ -165,8 +194,13 @@ def get_top_artists_formatted(username: str, number: int) -> str:
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks(username: str, number: int):
     number = clamp_top_number(number)
-    tracks = get_top_tracks_payload(username, number)
-    return jsonify([track.get("track_name", "Unknown track") for track in tracks])
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        names = get_lastfm_top_tracks(username, number)
+    else:
+        tracks = get_top_tracks_payload(username, number)
+        names = [track.get("track_name", "Unknown track") for track in tracks]
+    return jsonify(names)
 
 
 @bp.route("/top/tracks/<username>/<int:number>/formatted")
@@ -174,8 +208,12 @@ def get_top_tracks(username: str, number: int):
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_tracks_formatted(username: str, number: int) -> str:
     number = clamp_top_number(number)
-    tracks = get_top_tracks_payload(username, number)
-    names = [track.get("track_name", "Unknown track") for track in tracks]
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        names = get_lastfm_top_tracks(username, number)
+    else:
+        tracks = get_top_tracks_payload(username, number)
+        names = [track.get("track_name", "Unknown track") for track in tracks]
     return format_ranked_lines(names)
 
 
@@ -183,6 +221,9 @@ def get_top_tracks_formatted(username: str, number: int) -> str:
 @require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_listen_time(username: str) -> str:
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        return estimate_lastfm_listen_minutes(username)
     return estimate_total_listen_minutes(username)
 
 
@@ -190,6 +231,9 @@ def get_listen_time(username: str) -> str:
 @require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_genre_user(username: str) -> str:
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        return get_lastfm_top_genre(username)
     return get_top_genre(username)
 
 
@@ -197,6 +241,9 @@ def get_top_genre_user(username: str) -> str:
 @require_turnstile
 @rate_limit(STATS_RATE_LIMIT)
 def get_top_genre_artist(artist_name: str) -> str:
+    service = _resolve_stats_service()
+    if service == "lastfm":
+        return get_lastfm_artist_genre(artist_name)
     return get_genre_for_artist(artist_name)
 
 
@@ -204,11 +251,12 @@ def get_top_genre_artist(artist_name: str) -> str:
 @require_turnstile
 @rate_limit(IMAGE_RATE_LIMIT)
 def get_top_artist_img(username: str) -> Response:
+    service = _resolve_stats_service()
     source = request.args.get("source", "artist").strip().lower() or "artist"
     if source not in {"artist", "release"}:
         source = "artist"
     try:
-        image_result = fetch_top_artist_image(username, preferred_source=source)
+        image_result = fetch_top_artist_image(username, preferred_source=source, service=service)
     except ImageQueueFullError:
         abort(429, description="Image queue is full, try again in a moment.")
     except ImageQueueBusyError:

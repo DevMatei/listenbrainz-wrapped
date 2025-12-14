@@ -71,7 +71,6 @@ const navidromeServerInput = document.getElementById('navidrome-server');
 const navidromePasswordInput = document.getElementById('navidrome-password');
 const wrappedCountEl = document.getElementById('wrapped-count');
 const wrappedCountSinceEl = document.getElementById('wrapped-count-since');
-const defaultUsernameLabel = usernameLabel ? usernameLabel.textContent : 'ListenBrainz username';
 let turnstileWidgetId = null;
 const clientConfig = {
   turnstileEnabled: false,
@@ -84,6 +83,32 @@ let turnstileRefreshReject = null;
 let turnstileRefreshTimeout = null;
 
 const canvasRenderer = createCanvasRenderer({ canvas, themeSelect, artistImg });
+
+const SERVICE_USERNAME_COPY = {
+  listenbrainz: {
+    label: 'ListenBrainz username',
+    placeholder: 'e.g. devmatei',
+    emptyMessage: 'Enter a ListenBrainz username to get started.',
+  },
+  lastfm: {
+    label: 'Last.fm username',
+    placeholder: 'e.g. yourlastfmname',
+    emptyMessage: 'Enter a Last.fm username to get started.',
+  },
+  navidrome: {
+    label: 'Navidrome username',
+    placeholder: 'e.g. alice',
+    emptyMessage: 'Enter your Navidrome username to get started.',
+  },
+};
+
+function getUsernameCopy(service) {
+  return SERVICE_USERNAME_COPY[service] || {
+    label: 'Music username',
+    placeholder: 'e.g. devmatei',
+    emptyMessage: 'Enter a username to get started.',
+  };
+}
 
 function getSelectedService() {
   return serviceSelector.getValue();
@@ -105,14 +130,19 @@ function clearNavidromeState() {
 function handleServiceChange(nextValue) {
   const selectedService = nextValue || getSelectedService();
   const isNavidrome = selectedService === 'navidrome';
+  const copy = getUsernameCopy(selectedService);
+  const navCopy = getUsernameCopy('navidrome');
   if (usernameLabel) {
-    usernameLabel.textContent = isNavidrome ? 'Navidrome username' : defaultUsernameLabel;
+    usernameLabel.textContent = isNavidrome ? navCopy.label : copy.label;
     usernameLabel.setAttribute('for', isNavidrome && navidromeUsernameInput ? 'navidrome-username' : 'username');
   }
   if (usernameField) {
     usernameField.hidden = isNavidrome;
     if (typeof usernameField.required === 'boolean') {
       usernameField.required = !isNavidrome;
+    }
+    if (!isNavidrome) {
+      usernameField.placeholder = copy.placeholder;
     }
   }
   if (navidromeUsernameInput) {
@@ -124,6 +154,7 @@ function handleServiceChange(nextValue) {
     } else {
       navidromeUsernameInput.removeAttribute('required');
     }
+    navidromeUsernameInput.placeholder = navCopy.placeholder;
   }
   if (navidromeFields) {
     navidromeFields.hidden = !isNavidrome;
@@ -133,7 +164,7 @@ function handleServiceChange(nextValue) {
   if (turnstileWrapper) {
     turnstileWrapper.hidden = Boolean(isNavidrome || !isTurnstileEnabled());
   }
-  disableReleaseArtworkOption(isNavidrome);
+  disableReleaseArtworkOption(selectedService !== 'listenbrainz');
   if (!isNavidrome) {
     clearNavidromeState();
   }
@@ -168,7 +199,7 @@ function getServiceLabel(key) {
   if (SERVICE_LABELS[key]) {
     return SERVICE_LABELS[key];
   }
-  return key ? `${key.charAt(0).toUpperCase()}${key.slice(1)}` : 'ListenBrainz';
+  return key ? `${key.charAt(0).toUpperCase()}${key.slice(1)}` : 'Make a Wrapped';
 }
 const state = {
   coverObjectUrl: null,
@@ -863,7 +894,7 @@ function resetArtworkUpload(options = {}) {
   toggleArtworkReset(false);
   setArtworkEditorEnabled(false);
   if (!silent) {
-    setStatus('Custom artwork cleared. The next generation will fetch Last.fm artwork again.');
+    setStatus('Custom artwork cleared. The next generation will fetch artwork automatically again.');
   }
   if (state.generatedData && state.generatedData.username) {
     loadCoverArt(state.generatedData.username).then((success) => {
@@ -996,10 +1027,8 @@ async function generateWrapped(event) {
   const usernameInput = selectedService === 'navidrome' ? navidromeUsernameInput : usernameField;
   const username = usernameInput ? usernameInput.value.trim() : '';
   if (!username) {
-    const message = selectedService === 'navidrome'
-      ? 'Enter your Navidrome username to get started.'
-      : 'Enter a ListenBrainz username to get started.';
-    setStatus(message, 'error');
+    const copy = getUsernameCopy(selectedService);
+    setStatus(copy.emptyMessage || 'Enter a username to get started.', 'error');
     return;
   }
 

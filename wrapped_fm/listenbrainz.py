@@ -1,4 +1,4 @@
-"""ListenBrainz/Last.fm statistics helpers."""
+"""ListenBrainz statistics helpers."""
 
 from __future__ import annotations
 
